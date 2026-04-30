@@ -1,0 +1,67 @@
+{
+  "label": "RAG Q&A",
+  "description": "Retrieves context from the course_docs collection before answering.",
+  "workflow": {
+    "nodes": [
+      {
+        "id": "input-1",
+        "type": "input",
+        "label": "Question",
+        "position": { "x": 60, "y": 205 },
+        "config": {
+          "text": "How should RAG fit into a visual multi-agent system builder?"
+        }
+      },
+      {
+        "id": "vector-1",
+        "type": "vector_db",
+        "label": "Course Docs DB",
+        "position": { "x": 285, "y": 305 },
+        "config": {
+          "collection": "course_docs",
+          "embeddingModel": "nomic-embed-text",
+          "baseUrl": "http://127.0.0.1:11434"
+        }
+      },
+      {
+        "id": "retriever-1",
+        "type": "retriever",
+        "label": "Retriever",
+        "position": { "x": 300, "y": 170 },
+        "config": {
+          "collection": "course_docs",
+          "embeddingModel": "nomic-embed-text",
+          "baseUrl": "http://127.0.0.1:11434",
+          "topK": 3
+        }
+      },
+      {
+        "id": "agent-1",
+        "type": "agent",
+        "label": "RAG Writer",
+        "position": { "x": 540, "y": 170 },
+        "config": {
+          "name": "RAG Writer",
+          "provider": "mock",
+          "model": "llama3.2:1b",
+          "baseUrl": "http://127.0.0.1:11434",
+          "temperature": 0.2,
+          "systemPrompt": "Answer using the retrieved context. If context is missing, say what should be ingested first."
+        }
+      },
+      {
+        "id": "output-1",
+        "type": "output",
+        "label": "Answer",
+        "position": { "x": 780, "y": 205 },
+        "config": {}
+      }
+    ],
+    "edges": [
+      { "source": "input-1", "target": "retriever-1" },
+      { "source": "vector-1", "target": "retriever-1" },
+      { "source": "retriever-1", "target": "agent-1" },
+      { "source": "agent-1", "target": "output-1" }
+    ]
+  }
+}
