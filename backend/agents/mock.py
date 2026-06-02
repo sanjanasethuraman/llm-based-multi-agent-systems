@@ -4,7 +4,7 @@ from backend.utils import summarize
 class MockProvider(AgentProvider):
     name = "mock"
 
-    def run(self, config, incoming):
+    def run(self, config, incoming, available_tools):
         name = config.get("name", "Agent")
         prompt = config.get("systemPrompt", "You are a helpful assistant.")
 

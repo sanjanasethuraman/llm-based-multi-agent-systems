@@ -11,5 +11,5 @@ class ToolNodeExecutor(NodeExecutor):
         tool = get_tool(config.get("toolType", "echo"))
         if not tool:
             return "", {"status": "error", "message": f"Tool '{config.get('toolType')}' not found."}
-        result = tool.run(incoming, config)
+        result = tool.execute(incoming)
         return result, {"status": "completed", "message": f"Tool '{config.get('name') or config.get('toolType')}' executed successfully."}

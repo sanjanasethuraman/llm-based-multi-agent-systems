@@ -1,4 +1,5 @@
 from collections import defaultdict, deque
+from .tools import get_tool
 
 def summarize(text, limit=180):
     cleaned = " ".join(text.split())
@@ -35,6 +36,7 @@ def topological_order(nodes, edges):
 
 
 def collect_incoming(node_id, edges, values, nodes=None, skip_types=None):
+    #TODO: optimize
     parts = []
     for edge in edges:
         if edge["target"] == node_id and edge["source"] in values:
@@ -70,3 +72,14 @@ def preview_text(text, limit=220):
     if len(cleaned) <= limit:
         return cleaned
     return cleaned[:limit] + "..."
+
+def get_available_tools(node_id, edges, nodes):
+    tools = []
+    for edge in edges:
+        if edge["source"] == node_id:
+            target_node = nodes.get(edge["target"])
+            if target_node and target_node.get("type") == "tool":
+                tool_type = target_node.get("config", {}).get("toolType")
+                if tool_type:
+                    tools.append(get_tool(tool_type))
+    return tools

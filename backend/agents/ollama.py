@@ -1,42 +1,48 @@
 from .base import AgentProvider
 import json
 from urllib import request, error
+from ollama import chat, ChatResponse
 
 class OllamaProvider(AgentProvider):
     name = "OllamaProvider"
+    MAX_ITERATIONS = 10
 
-    def run(self, config, incoming):        
+    def run(self, config, incoming, available_tools):        
         name = config.get("name", "Agent")
         model = config.get("model", "llama3.2:1b")
         base_url = config.get("baseUrl", "http://127.0.0.1:11434").rstrip("/")
-        prompt = self.build_llm_prompt(config, incoming)
-        payload = {
-            "model": model,
-            "prompt": prompt,
-            "stream": False,
-            "options": {"temperature": float(config.get("temperature", 0.2))},
+        messages = [{"role": "system", "content": config.get("systemPrompt", "You are a helpful assistant.")}]
+        messages.append({"role": "user", "content": incoming})
+        ollama_tools = [self.ollama_schema(tool) for tool in available_tools]
+        tool_registry = {
+            tool.name: tool for tool in available_tools
         }
-
-        try:
-            data = json.dumps(payload).encode("utf-8")
-            req = request.Request(
-                f"{base_url}/api/generate",
-                data=data,
-                headers={"Content-Type": "application/json"},
-                method="POST",
+        
+        for _ in range(self.MAX_ITERATIONS):
+            print(f"Calling Ollama model '{model}' with messages: {messages} and tools: {ollama_tools}")
+            response: ChatResponse = chat(
+                model=model,
+                messages=messages,
+                options={"temperature": float(config.get("temperature", 0.2))},
+                tools=ollama_tools,
             )
-            with request.urlopen(req, timeout=90) as response:
-                result = json.loads(response.read().decode("utf-8"))
-            return result.get("response", "").strip() or f"[{name} | ollama] Empty response from {model}."
-        except error.URLError as exc:
-            return (
-                f"[{name} | ollama unavailable]\n"
-                f"Could not reach Ollama at {base_url} for model {model}.\n"
-                "Start Ollama and pull the model, for example: ollama pull llama3.2:1b\n"
-                f"Details: {exc}"
-            )
-        except Exception as exc:
-            return f"[{name} | ollama error]\n{exc}"
+            messages.append(response.message)
+            if response.message.tool_calls:
+                for tool_call in response.message.tool_calls:
+                    print(f"Tool call: {tool_call.function.name} with arguments {tool_call.function.arguments}")
+                    tool = tool_registry.get(tool_call.function.name)
+                    if tool is None:
+                        continue
+                    result = tool.execute(**tool_call.function.arguments)
+                    messages.append({
+                        "role": "tool",
+                        "name": tool_call.function.name,
+                        "content": json.dumps({"result": result}),
+                    })
+            else:
+                print("No tool calls, breaking out of loop.")
+                break
+        return response.message.content
 
 
     
@@ -47,3 +53,13 @@ class OllamaProvider(AgentProvider):
             f"Workflow input:\n{incoming}\n\n"
             "Respond with the result for this agent node."
         )
+    
+    def ollama_schema(self, tool):
+        return {
+            "type": "function",
+            "function": {
+                "name": tool.name,
+                "description": tool.description,
+                "parameters": tool.parameters,
+            }
+        }
