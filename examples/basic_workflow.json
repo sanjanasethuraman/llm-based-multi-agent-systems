@@ -1,0 +1,69 @@
+{
+  "label": "Basic Agent Chain",
+  "description": "Input, planner agent, writer agent, word-count tool, and final output.",
+  "workflow": {
+    "nodes": [
+      {
+        "id": "input-1",
+        "type": "input",
+        "label": "User Query",
+        "position": { "x": 60, "y": 205 },
+        "config": {
+          "text": "Explain how a visual multi-agent system builder should work."
+        }
+      },
+      {
+        "id": "agent-1",
+        "type": "agent",
+        "label": "Planner Agent",
+        "position": { "x": 290, "y": 150 },
+        "config": {
+          "name": "Planner Agent",
+          "provider": "mock",
+          "model": "llama3.2:1b",
+          "baseUrl": "http://127.0.0.1:11434",
+          "temperature": 0.2,
+          "systemPrompt": "Break the user's request into a short implementation plan."
+        }
+      },
+      {
+        "id": "agent-2",
+        "type": "agent",
+        "label": "Writer Agent",
+        "position": { "x": 520, "y": 150 },
+        "config": {
+          "name": "Writer Agent",
+          "provider": "mock",
+          "model": "llama3.2:1b",
+          "baseUrl": "http://127.0.0.1:11434",
+          "temperature": 0.4,
+          "systemPrompt": "Write a concise final response based on the plan."
+        }
+      },
+      {
+        "id": "tool-1",
+        "type": "tool",
+        "label": "Word Count",
+        "position": { "x": 520, "y": 285 },
+        "config": {
+          "name": "Word Count",
+          "toolType": "word_count"
+        }
+      },
+      {
+        "id": "output-1",
+        "type": "output",
+        "label": "Final Output",
+        "position": { "x": 760, "y": 205 },
+        "config": {}
+      }
+    ],
+    "edges": [
+      { "source": "input-1", "target": "agent-1" },
+      { "source": "agent-1", "target": "agent-2" },
+      { "source": "agent-2", "target": "tool-1" },
+      { "source": "agent-2", "target": "output-1" },
+      { "source": "tool-1", "target": "output-1" }
+    ]
+  }
+}
