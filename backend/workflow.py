@@ -1,13 +1,9 @@
-import json
 import time
-from collections import defaultdict, deque
+from collections import defaultdict
 from pprint import pformat
-from urllib import error, request
 
-try:
-    from rag import retrieve_context
-except ModuleNotFoundError:
-    from backend.rag import retrieve_context
+from backend.nodes import get_node_executor
+from backend.utils import topological_order, preview_text
 
 
 VALID_NODE_TYPES = {"input", "agent", "tool", "output", "retriever", "vector_db"}
@@ -111,122 +107,65 @@ def run_workflow(workflow):
 
     values = {}
     logs = []
-    agent_calls = 0
-    tool_calls = 0
-    retriever_calls = 0
-    token_estimate = 0
+
     node_results = {}
     retrievals = []
+    stats = {
+        "agentCalls": 0,
+        "toolCalls": 0,
+        "retrieverCalls": 0,
+        "estimatedTokens": 0,
+    }
+
+    context = {
+        "workflow": workflow,
+        "nodes": nodes,
+        "edges": edges,
+        "values": values,
+        "logs": logs,
+        "stats": stats
+        }
 
     for node_id in order:
         node_started = time.perf_counter()
         node = nodes[node_id]
-        node_type = node.get("type")
-        config = node.get("config", {})
-        incoming = collect_incoming(node_id, edges, values, nodes)
-        status = "completed"
-        message = ""
-        matches = []
-
-        if node_type == "input":
-            result = config.get("text", "")
-            message = "Loaded user input."
-            logs.append(log_item(node_id, "input", message, status))
-        elif node_type == "vector_db":
-            result = ""
-            collection = config.get("collection", "course_docs")
-            message = f"Configured Vector DB collection '{collection}'."
-            logs.append(log_item(node_id, "vector_db", message, status))
-        elif node_type == "retriever":
-            retriever_calls += 1
-            retriever_config = merge_vector_db_config(node_id, edges, nodes, config)
-            query = collect_incoming(node_id, edges, values, nodes, skip_types={"vector_db"})
-            retrieved = retrieve_context(retriever_config, query)
-            result = retrieved["context"]
-            matches = retrieved.get("matches", [])
-            retrievals.append({
-                "nodeId": node_id,
-                "collection": retriever_config.get("collection", "course_docs"),
-                "matches": matches,
-                "vectorBackend": retrieved.get("vectorBackend", "unknown"),
-                "embeddingBackend": retrieved.get("embeddingBackend", "unknown"),
-            })
-            token_estimate += estimate_tokens(query + " " + result)
-            if not matches:
-                status = "warning"
-            message = (
-                f"Retrieved {len(matches)} chunks from "
-                f"{retriever_config.get('collection', 'course_docs')} using "
-                f"{retrieved.get('vectorBackend', 'unknown')}."
-            )
-            logs.append(
-                log_item(
-                    node_id,
-                    "retriever",
-                    message,
-                    status,
-                )
-            )
-        elif node_type == "agent":
-            agent_calls += 1
-            result = run_agent(config, incoming)
-            token_estimate += estimate_tokens(config.get("systemPrompt", "") + " " + incoming + " " + result)
-            provider = config.get("provider", "mock")
-            if provider == "ollama" and "ollama unavailable" in result.lower():
-                status = "warning"
-            if provider == "ollama" and "ollama error" in result.lower():
-                status = "error"
-            message = (
-                f"{config.get('name', 'Agent')} ran with "
-                f"{provider} / {config.get('model', 'n/a')}."
-            )
-            logs.append(
-                log_item(
-                    node_id,
-                    "agent",
-                    message,
-                    status,
-                )
-            )
-        elif node_type == "tool":
-            tool_calls += 1
-            result = run_tool(config, incoming)
-            token_estimate += estimate_tokens(incoming + " " + result)
-            message = f"{config.get('name', 'Tool')} returned a result."
-            logs.append(log_item(node_id, "tool", message, status))
-        elif node_type == "output":
-            result = incoming
-            message = "Collected final output."
-            logs.append(log_item(node_id, "output", message, status))
+        executor = get_node_executor(node.get("type"))
+        if executor is None:
+            node_results[node_id] = {
+                "status": "error",
+                "type": node.get("type"),
+                "message": f"Unsupported node type: {node.get('type')}",
+                "durationMs": round((time.perf_counter() - node_started) * 1000, 2),
+                "outputPreview": "",
+                "matches": [],
+            }
+            continue
         else:
-            result = incoming
-            status = "warning"
-            message = f"Passed through unknown node type: {node_type}"
-            logs.append(log_item(node_id, "unknown", message, status))
+            result, metadata = executor.execute(node, context)
+            status = metadata.get("status", "completed")
+            message = metadata.get("message", "")
+            stats.update(metadata.get("stats", {}))
 
+    
         values[node_id] = result
         node_results[node_id] = {
             "status": status,
-            "type": node_type,
+            "type": node["type"],
             "message": message,
             "durationMs": round((time.perf_counter() - node_started) * 1000, 2),
             "outputPreview": preview_text(result),
-            "matches": matches,
+            "matches": metadata.get("matches", []),
         }
 
-    output_nodes = [node["id"] for node in nodes.values() if node.get("type") == "output"]
-    final_output = "\n\n".join(values.get(node_id, "") for node_id in output_nodes) or ""
+    final_output = "\n\n".join(values.get(node_id, "") for node_id in nodes if nodes[node_id].get("type") == "output")
     runtime_ms = round((time.perf_counter() - started) * 1000, 2)
 
     return {
         "output": final_output,
         "logs": logs,
         "stats": {
+            **stats,
             "runtimeMs": runtime_ms,
-            "agentCalls": agent_calls,
-            "toolCalls": tool_calls,
-            "retrieverCalls": retriever_calls,
-            "estimatedTokens": token_estimate,
             "nodesExecuted": len(order),
         },
         "executionOrder": order,
@@ -234,147 +173,6 @@ def run_workflow(workflow):
         "retrievals": retrievals,
         "validation": validation,
     }
-
-
-def topological_order(nodes, edges):
-    indegree = {node_id: 0 for node_id in nodes}
-    outgoing = defaultdict(list)
-
-    for edge in edges:
-        source = edge["source"]
-        target = edge["target"]
-        if source not in nodes or target not in nodes:
-            raise ValueError(f"Edge references missing node: {source} -> {target}")
-        outgoing[source].append(target)
-        indegree[target] += 1
-
-    queue = deque([node_id for node_id, degree in indegree.items() if degree == 0])
-    order = []
-
-    while queue:
-        node_id = queue.popleft()
-        order.append(node_id)
-        for target in outgoing[node_id]:
-            indegree[target] -= 1
-            if indegree[target] == 0:
-                queue.append(target)
-
-    if len(order) != len(nodes):
-        raise ValueError("Workflow contains a cycle. The first prototype supports directed acyclic graphs.")
-    return order
-
-
-def collect_incoming(node_id, edges, values, nodes=None, skip_types=None):
-    parts = []
-    for edge in edges:
-        if edge["target"] == node_id and edge["source"] in values:
-            if nodes and skip_types and nodes[edge["source"]].get("type") in skip_types:
-                continue
-            parts.append(values[edge["source"]])
-    return "\n\n".join(part for part in parts if part)
-
-
-def merge_vector_db_config(node_id, edges, nodes, config):
-    merged = {}
-    for edge in edges:
-        if edge["target"] == node_id:
-            source = nodes.get(edge["source"])
-            if source and source.get("type") == "vector_db":
-                merged.update(source.get("config", {}))
-    merged.update(config)
-    return merged
-
-
-def run_agent(config, incoming):
-    provider = config.get("provider", "mock")
-    name = config.get("name", "Agent")
-    prompt = config.get("systemPrompt", "You are a helpful assistant.")
-
-    if provider == "mock":
-        return (
-            f"[{name} | mock]\n"
-            f"System prompt: {prompt}\n"
-            f"Input summary: {summarize(incoming)}\n"
-            "Response: This is a deterministic prototype response."
-        )
-
-    if provider == "ollama":
-        return call_ollama(config, incoming)
-
-    return f"[{name} | {provider}] Provider is not implemented yet."
-
-
-def call_ollama(config, incoming):
-    name = config.get("name", "Agent")
-    model = config.get("model", "llama3.2:1b")
-    base_url = config.get("baseUrl", "http://127.0.0.1:11434").rstrip("/")
-    prompt = build_llm_prompt(config, incoming)
-    payload = {
-        "model": model,
-        "prompt": prompt,
-        "stream": False,
-        "options": {"temperature": float(config.get("temperature", 0.2))},
-    }
-
-    try:
-        data = json.dumps(payload).encode("utf-8")
-        req = request.Request(
-            f"{base_url}/api/generate",
-            data=data,
-            headers={"Content-Type": "application/json"},
-            method="POST",
-        )
-        with request.urlopen(req, timeout=90) as response:
-            result = json.loads(response.read().decode("utf-8"))
-        return result.get("response", "").strip() or f"[{name} | ollama] Empty response from {model}."
-    except error.URLError as exc:
-        return (
-            f"[{name} | ollama unavailable]\n"
-            f"Could not reach Ollama at {base_url} for model {model}.\n"
-            "Start Ollama and pull the model, for example: ollama pull llama3.2:1b\n"
-            f"Details: {exc}"
-        )
-    except Exception as exc:
-        return f"[{name} | ollama error]\n{exc}"
-
-
-def build_llm_prompt(config, incoming):
-    system_prompt = config.get("systemPrompt", "You are a helpful assistant.")
-    return (
-        f"System instructions:\n{system_prompt}\n\n"
-        f"Workflow input:\n{incoming}\n\n"
-        "Respond with the result for this agent node."
-    )
-
-
-def run_tool(config, incoming):
-    name = config.get("name", "Tool")
-    tool_type = config.get("toolType", "echo")
-
-    if tool_type == "uppercase":
-        return incoming.upper()
-    if tool_type == "word_count":
-        return f"{name} counted {len(incoming.split())} words."
-    return f"{name} received:\n{incoming}"
-
-
-def estimate_tokens(text):
-    return max(1, len(text.split()))
-
-
-def summarize(text, limit=180):
-    cleaned = " ".join(text.split())
-    if len(cleaned) <= limit:
-        return cleaned
-    return cleaned[:limit] + "..."
-
-
-def preview_text(text, limit=220):
-    cleaned = " ".join(str(text).split())
-    if len(cleaned) <= limit:
-        return cleaned
-    return cleaned[:limit] + "..."
-
 
 def log_item(node_id, node_type, message, status="completed"):
     return {
@@ -384,7 +182,6 @@ def log_item(node_id, node_type, message, status="completed"):
         "status": status,
         "time": round(time.time(), 3),
     }
-
 
 def generate_python(workflow):
     serialized = pformat(workflow, width=100, sort_dicts=False)

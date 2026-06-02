@@ -19,6 +19,10 @@ React + Python prototype for visually composing, running, and inspecting LLM-bas
 ## Project Layout
 
 - `backend/` contains the standard-library Python server, workflow runner, SQLite helpers, and RAG helpers.
+    - `agents/` contains agent providers (mock, Ollama, ...)
+    - `nodes/` contains node executors (for all node types)
+    - `tools/` tool implementations
+    - `vector_db/` optional vector DB connectors / adapters
 - `frontend/` contains the Vite/React app.
 - `examples/` contains presentation/demo workflows.
 - `scripts/demo.sh` installs missing frontend dependencies, builds React, and starts the backend server.
@@ -34,6 +38,7 @@ npm install
 npm run build
 python3 backend/server.py
 ```
+(If you get ModuleNotFoundErrors try "python3 -m backend.server" instead of "python3 backend/server.py)
 
 The server defaults to `http://127.0.0.1:8000`. If that port is already taken, it automatically tries the next ports and prints the URL it selected.
 
