@@ -11,6 +11,6 @@ class MockProvider(AgentProvider):
         return (
             f"[{name} | mock]\n"
             f"System prompt: {prompt}\n"
-            f"Input summary: {summarize(incoming)}\n"
+            f"Input: {incoming}\n"
             "Response: This is a deterministic prototype response."
-        )
+        ), 0

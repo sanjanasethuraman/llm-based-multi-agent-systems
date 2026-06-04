@@ -35,15 +35,50 @@ def topological_order(nodes, edges):
     return order
 
 
+def collect_incoming_map(node_id, edges, values, nodes, skip_types=None):
+    parts = {}
+    for edge in edges:
+        if edge["target"] != node_id:
+            continue
+        src = edge["source"]
+        if src not in values:
+            continue
+        if nodes and skip_types and get_node_type(src, nodes) in skip_types:
+            continue
+
+        # Collect structured metadata per source node id so callers can preserve provenance
+        label = None
+        if isinstance(nodes, dict):
+            label = nodes.get(src, {}).get("label")
+        else:
+            for n in nodes:
+                if isinstance(n, dict) and n.get("id") == src:
+                    label = n.get("label")
+                    break
+
+        parts[src] = {
+            "text": values[src],
+            "type": get_node_type(src, nodes),
+            "label": label,
+        }
+    return parts
+
+
 def collect_incoming(node_id, edges, values, nodes=None, skip_types=None):
-    #TODO: optimize
+    """Convenience wrapper that returns the incoming content as a single joined string.
+    Uses `collect_incoming_map` under the hood and joins the `text` fields in source order.
+    """
+    mapping = collect_incoming_map(node_id, edges, values, nodes or {}, skip_types=skip_types)
+    # Preserve insertion order of edges: iterate edges and pick mapped texts
     parts = []
     for edge in edges:
-        if edge["target"] == node_id and edge["source"] in values:
-            if nodes and skip_types and nodes[edge["source"]].get("type") in skip_types:
-                continue
-            parts.append(values[edge["source"]])
-    return "\n\n".join(part for part in parts if part)
+        if edge["target"] == node_id:
+            src = edge["source"]
+            item = mapping.get(src)
+            if item and item.get("text"):
+                parts.append(item.get("text"))
+    return "\n\n".join(parts)
+
 
 
 def merge_vector_db_config(node_id, edges, nodes, config):
@@ -60,13 +95,6 @@ def merge_vector_db_config(node_id, edges, nodes, config):
 def estimate_tokens(text):
     return max(1, len(text.split()))
 
-
-def summarize(text, limit=180):
-    cleaned = " ".join(text.split())
-    if len(cleaned) <= limit:
-        return cleaned
-    return cleaned[:limit] + "..."
-
 def preview_text(text, limit=220):
     cleaned = " ".join(str(text).split())
     if len(cleaned) <= limit:
@@ -74,12 +102,49 @@ def preview_text(text, limit=220):
     return cleaned[:limit] + "..."
 
 def get_available_tools(node_id, edges, nodes):
+    """Return a list of tool metadata for tool nodes directly outgoing from `node_id`.
+    Each entry contains `nodeId`, `label`, `toolType`, and `tool` (implementation or None).
+    """
     tools = []
     for edge in edges:
-        if edge["source"] == node_id:
+        if edge["source"] != node_id:
+            continue
+        target_node = None
+        if isinstance(nodes, dict):
             target_node = nodes.get(edge["target"])
-            if target_node and target_node.get("type") == "tool":
-                tool_type = target_node.get("config", {}).get("toolType")
-                if tool_type:
-                    tools.append(get_tool(tool_type))
+        else:
+            for n in nodes:
+                if isinstance(n, dict) and n.get("id") == edge["target"]:
+                    target_node = n
+                    break
+        if not target_node or target_node.get("type") != "tool":
+            continue
+        cfg = target_node.get("config", {})
+        tool_type = cfg.get("toolType")
+        tool_obj = get_tool(tool_type) if tool_type else None
+        tools.append({
+            "nodeId": target_node.get("id"),
+            "label": target_node.get("label"),
+            "toolType": tool_type,
+            "tool": tool_obj,
+        })
     return tools
+
+def is_tool_managed_by_agent(node_id, edges, nodes):
+    return any(
+        edge["target"] == node_id and nodes.get(edge["source"], {}).get("type") == "agent"
+        for edge in edges
+    )
+
+def get_node_type(node_id, nodes):
+    # Support both a mapping of node_id -> node (dict) and a list of node dicts.
+    if isinstance(nodes, dict):
+        node = nodes.get(node_id)
+        if isinstance(node, dict):
+            return node.get("type", "unknown")
+        return "unknown"
+
+    for node in nodes:
+        if isinstance(node, dict) and node.get("id") == node_id:
+            return node.get("type", "unknown")
+    return "unknown"

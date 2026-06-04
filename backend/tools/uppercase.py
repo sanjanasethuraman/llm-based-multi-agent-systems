@@ -1,4 +1,4 @@
-from .tool import Tool
+from .base import Tool
 
 class UppercaseTool(Tool):
     name = "uppercase"
