@@ -19,6 +19,7 @@
         "position": { "x": 285, "y": 305 },
         "config": {
           "collection": "course_docs",
+          "vectorBackend": "auto",
           "embeddingModel": "nomic-embed-text",
           "baseUrl": "http://127.0.0.1:11434"
         }
@@ -30,6 +31,7 @@
         "position": { "x": 300, "y": 170 },
         "config": {
           "collection": "course_docs",
+          "vectorBackend": "auto",
           "embeddingModel": "nomic-embed-text",
           "baseUrl": "http://127.0.0.1:11434",
           "topK": 3

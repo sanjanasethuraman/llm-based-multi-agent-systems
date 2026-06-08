@@ -11,6 +11,7 @@ React + Python prototype for visually composing, running, and inspecting LLM-bas
 - Show per-node execution status after a run.
 - Ingest files into a RAG collection.
 - List document/vector collections.
+- Select a vector backend per ingestion/retriever path (auto, Chroma, local JSON, FAISS scaffold).
 - Show retrieved chunks from retriever nodes.
 - Switch agents between mock, Ollama, and placeholder API providers.
 - Surface Ollama availability from the configured local provider URL.
@@ -83,3 +84,20 @@ ollama pull nomic-embed-text
 ```
 
 If Ollama embeddings are unavailable, ingestion falls back to deterministic local hash embeddings so the prototype still runs.
+
+## Optional Hugging Face Support
+
+Agent nodes can use hosted Hugging Face models through the OpenAI-compatible Hugging Face router at `https://router.huggingface.co/v1/chat/completions`. Select `Hugging Face` as the agent provider, set a model ID such as `mistralai/Mistral-7B-Instruct-v0.3`, and either enter a token in the node settings or start the backend with:
+
+```bash
+HF_TOKEN=hf_your_token python3 backend/server.py
+```
+
+The backend also accepts `HUGGING_FACE_API_TOKEN`. Leaving the token field empty keeps saved workflows cleaner when the token is supplied through the environment.
+
+## Vector Backend Options
+
+- `auto` uses Chroma when `chromadb` is installed, otherwise local JSON.
+- `chroma` uses a persistent Chroma store in `data/chroma`.
+- `local-json-fallback` stores vectors in `data/vector_store.json`.
+- `faiss` is selectable as an adapter scaffold; ingestion/retrieval implementation is pending.

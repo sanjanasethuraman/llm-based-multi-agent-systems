@@ -40,7 +40,24 @@ const nodeTypes = { workflow: WorkflowNode };
 const providerOptions = [
   { value: "mock", label: "Mock" },
   { value: "ollama", label: "Ollama" },
+  { value: "huggingface", label: "Hugging Face" },
   { value: "api", label: "API" },
+];
+const providerDefaults = {
+  huggingface: {
+    baseUrl: "https://router.huggingface.co/v1",
+    model: "mistralai/Mistral-7B-Instruct-v0.3",
+  },
+  ollama: {
+    baseUrl: "http://127.0.0.1:11434",
+    model: "llama3.2:1b",
+  },
+};
+const vectorBackendOptions = [
+  { value: "auto", label: "Auto" },
+  { value: "chroma", label: "Chroma" },
+  { value: "local-json-fallback", label: "Local JSON" },
+  { value: "faiss", label: "FAISS" },
 ];
 
 export default function App() {
@@ -61,14 +78,18 @@ function WorkflowApp() {
   const [generatedCode, setGeneratedCode] = useState("Click Generate Python.");
   const [nodeResults, setNodeResults] = useState({});
   const [retrievals, setRetrievals] = useState([]);
+  const [mcpCalls, setMcpCalls] = useState([]);
+  const [mcpTools, setMcpTools] = useState([]);
   const [examples, setExamples] = useState([]);
   const [selectedExample, setSelectedExample] = useState("");
   const [collections, setCollections] = useState([]);
   const [recentDocuments, setRecentDocuments] = useState([]);
   const [ollamaStatus, setOllamaStatus] = useState(null);
+  const [huggingFaceStatus, setHuggingFaceStatus] = useState(null);
   const [ingestStatus, setIngestStatus] = useState("No document ingested yet.");
   const [ragForm, setRagForm] = useState({
     collection: "course_docs",
+    vectorBackend: "auto",
     title: "Project Notes",
     embeddingModel: "nomic-embed-text",
     baseUrl: "http://127.0.0.1:11434",
@@ -124,6 +145,7 @@ function WorkflowApp() {
   useEffect(() => {
     refreshExamples();
     refreshCollections();
+    refreshMcpTools();
   }, []);
 
   useEffect(() => {
@@ -148,6 +170,47 @@ function WorkflowApp() {
       window.clearTimeout(timeout);
     };
   }, [ragForm.baseUrl, selectedNode?.config?.baseUrl]);
+
+  useEffect(() => {
+    if (selectedNode?.type !== "agent" || selectedNode?.config?.provider !== "huggingface") {
+      setHuggingFaceStatus(null);
+      return undefined;
+    }
+
+    const controller = new AbortController();
+    const timeout = window.setTimeout(async () => {
+      try {
+        const result = await postJson("/api/provider/huggingface-status", {
+          model: selectedNode.config.model,
+          token: selectedNode.config.huggingFaceToken,
+          baseUrl: selectedNode.config.baseUrl,
+        });
+        if (!controller.signal.aborted) {
+          setHuggingFaceStatus(result);
+        }
+      } catch (error) {
+        if (!controller.signal.aborted) {
+          setHuggingFaceStatus({
+            available: false,
+            model: selectedNode.config.model,
+            tokenConfigured: Boolean(selectedNode.config.huggingFaceToken),
+            message: error.message,
+          });
+        }
+      }
+    }, 500);
+
+    return () => {
+      controller.abort();
+      window.clearTimeout(timeout);
+    };
+  }, [
+    selectedNode?.config?.baseUrl,
+    selectedNode?.config?.huggingFaceToken,
+    selectedNode?.config?.model,
+    selectedNode?.config?.provider,
+    selectedNode?.type,
+  ]);
 
   const updateWorkflow = useCallback((updater) => {
     setWorkflow((current) => normalizeWorkflow(typeof updater === "function" ? updater(current) : updater));
@@ -292,6 +355,7 @@ function WorkflowApp() {
       setWorkflow(nextWorkflow);
       setNodeResults({});
       setRetrievals([]);
+      setMcpCalls([]);
       setSelected({ kind: "node", id: nextWorkflow.nodes[0]?.id || "" });
       setStatusMessage(`Loaded example: ${result.label}.`);
     } catch (error) {
@@ -311,6 +375,7 @@ function WorkflowApp() {
       setWorkflow(nextWorkflow);
       setNodeResults({});
       setRetrievals([]);
+      setMcpCalls([]);
       setSelected({ kind: "node", id: nextWorkflow.nodes[0]?.id || "" });
       setStatusMessage(`Loaded workflow from ${result.path}.`);
     } catch (error) {
@@ -350,6 +415,7 @@ function WorkflowApp() {
       setLogs([]);
       setStats(null);
       setRetrievals([]);
+      setMcpCalls([]);
       setNodeResults(
         Object.fromEntries(
           workflow.nodes.map((node) => [
@@ -364,6 +430,7 @@ function WorkflowApp() {
       setLogs(result.logs || []);
       setStats(result.stats || null);
       setRetrievals(result.retrievals || []);
+      setMcpCalls(result.mcpCalls || []);
       setNodeResults(result.nodeResults || {});
       setStatusMessage("Workflow run completed.");
     } catch (error) {
@@ -407,6 +474,15 @@ function WorkflowApp() {
     }
   }
 
+  async function refreshMcpTools() {
+    try {
+      const result = await getJson("/api/mcp/tools");
+      setMcpTools(result.tools || []);
+    } catch (error) {
+      setStatusMessage(error.message);
+    }
+  }
+
   async function ingestDocuments() {
     try {
       setIngestStatus("Reading files...");
@@ -423,12 +499,14 @@ function WorkflowApp() {
       const payload = documents.length
         ? {
             collection: ragForm.collection,
+            vectorBackend: ragForm.vectorBackend,
             embeddingModel: ragForm.embeddingModel,
             baseUrl: ragForm.baseUrl,
             documents,
           }
         : {
             collection: ragForm.collection,
+            vectorBackend: ragForm.vectorBackend,
             title: ragForm.title,
             source: "manual-ui",
             text: ragForm.text,
@@ -518,6 +596,8 @@ function WorkflowApp() {
         <ConfigPanel
           node={selectedNode}
           validation={validation}
+          huggingFaceStatus={huggingFaceStatus}
+          mcpTools={mcpTools}
           ollamaStatus={ollamaStatus}
           onNodeChange={updateNode}
         />
@@ -536,6 +616,7 @@ function WorkflowApp() {
 
       <ResultPanels output={output} logs={logs} stats={stats} />
       <RetrievalPanel retrievals={retrievals} />
+      <McpCallsPanel calls={mcpCalls} />
 
       <section className="code-panel">
         <div className="code-header">
@@ -561,6 +642,7 @@ function WorkflowNode({ data, selected }) {
       <div className="node-meta">
         <span>{NODE_TYPES[node.type] || node.type}</span>
         {node.type === "agent" && <span>{node.config?.provider || "mock"}</span>}
+        {node.type === "mcp_tool" && <span>{node.config?.toolId || "unselected"}</span>}
       </div>
       {result?.message && <p>{result.message}</p>}
       <Handle className="node-handle source" type="source" position={Position.Right} />
@@ -583,7 +665,7 @@ function Palette({ onAddNode }) {
   );
 }
 
-function ConfigPanel({ node, validation, ollamaStatus, onNodeChange }) {
+function ConfigPanel({ node, validation, huggingFaceStatus, mcpTools, ollamaStatus, onNodeChange }) {
   if (!node) {
     return (
       <aside className="config">
@@ -634,30 +716,63 @@ function ConfigPanel({ node, validation, ollamaStatus, onNodeChange }) {
                     className={node.config.provider === provider.value ? "active" : ""}
                     key={provider.value}
                     type="button"
-                    onClick={() => updateConfig({ provider: provider.value })}
+                    onClick={() => updateConfig({ provider: provider.value, ...(providerDefaults[provider.value] || {}) })}
                   >
                     {provider.label}
                   </button>
                 ))}
               </div>
             </div>
-            <ProviderNote provider={node.config.provider} ollamaStatus={ollamaStatus} />
+            <ProviderNote
+              provider={node.config.provider}
+              huggingFaceStatus={huggingFaceStatus}
+              ollamaStatus={ollamaStatus}
+            />
             <label>
-              Model
+              {node.config.provider === "huggingface" ? "Hugging Face Model ID" : "Model"}
               <input
                 value={node.config.model || ""}
-                placeholder="llama3.2:1b"
+                placeholder={node.config.provider === "huggingface" ? "mistralai/Mistral-7B-Instruct-v0.3" : "llama3.2:1b"}
                 onChange={(event) => updateConfig({ model: event.target.value })}
               />
             </label>
+            {node.config.provider === "huggingface" && (
+              <label>
+                Hugging Face Token
+                <input
+                  autoComplete="off"
+                  type="password"
+                  value={node.config.huggingFaceToken || ""}
+                  placeholder="Uses HF_TOKEN on the backend if left blank"
+                  onChange={(event) => updateConfig({ huggingFaceToken: event.target.value })}
+                />
+              </label>
+            )}
             <label>
-              Local Provider URL
+              {node.config.provider === "huggingface" ? "Inference API URL" : "Local Provider URL"}
               <input
                 value={node.config.baseUrl || ""}
-                placeholder="http://127.0.0.1:11434"
+                placeholder={
+                  node.config.provider === "huggingface"
+                    ? "https://router.huggingface.co/v1"
+                    : "http://127.0.0.1:11434"
+                }
                 onChange={(event) => updateConfig({ baseUrl: event.target.value })}
               />
             </label>
+            {node.config.provider === "huggingface" && (
+              <label>
+                Max New Tokens
+                <input
+                  max="4096"
+                  min="1"
+                  step="1"
+                  type="number"
+                  value={node.config.maxNewTokens ?? 512}
+                  onChange={(event) => updateConfig({ maxNewTokens: Number(event.target.value) })}
+                />
+              </label>
+            )}
             <label>
               Temperature
               <input
@@ -689,6 +804,19 @@ function ConfigPanel({ node, validation, ollamaStatus, onNodeChange }) {
                 placeholder="course_docs"
                 onChange={(event) => updateConfig({ collection: event.target.value })}
               />
+            </label>
+            <label>
+              Vector Backend
+              <select
+                value={node.config.vectorBackend || "auto"}
+                onChange={(event) => updateConfig({ vectorBackend: event.target.value })}
+              >
+                {vectorBackendOptions.map((backend) => (
+                  <option key={backend.value} value={backend.value}>
+                    {backend.label}
+                  </option>
+                ))}
+              </select>
             </label>
             <label>
               Embedding Model
@@ -744,6 +872,60 @@ function ConfigPanel({ node, validation, ollamaStatus, onNodeChange }) {
             </label>
           </>
         )}
+
+        {node.type === "mcp_tool" && (
+          <>
+            <label>
+              MCP Server
+              <input
+                value={node.config.server || "demo"}
+                onChange={(event) => updateConfig({ server: event.target.value })}
+              />
+            </label>
+            <label>
+              MCP Tool
+              <select
+                value={node.config.toolId || ""}
+                onChange={(event) => {
+                  const selectedTool = mcpTools.find((tool) => tool.id === event.target.value);
+                  updateConfig({
+                    toolId: event.target.value,
+                    server: selectedTool?.server || node.config.server || "demo",
+                    name: selectedTool ? `MCP ${selectedTool.name}` : node.config.name,
+                  });
+                }}
+              >
+                <option value="">Select a tool</option>
+                {mcpTools.map((tool) => (
+                  <option key={tool.id} value={tool.id}>
+                    {tool.id}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {mcpTools.find((tool) => tool.id === node.config.toolId)?.description && (
+              <div className="provider-note neutral">
+                {mcpTools.find((tool) => tool.id === node.config.toolId).description}
+              </div>
+            )}
+            <label>
+              Arguments JSON
+              <textarea
+                rows={7}
+                value={node.config.arguments || "{}"}
+                onChange={(event) => updateConfig({ arguments: event.target.value })}
+              />
+            </label>
+            <label className="checkbox-field">
+              <input
+                checked={node.config.includeInput !== false}
+                type="checkbox"
+                onChange={(event) => updateConfig({ includeInput: event.target.checked })}
+              />
+              Include incoming workflow text
+            </label>
+          </>
+        )}
       </div>
 
       <ValidationPanel validation={validation} />
@@ -751,12 +933,32 @@ function ConfigPanel({ node, validation, ollamaStatus, onNodeChange }) {
   );
 }
 
-function ProviderNote({ provider, ollamaStatus }) {
+function ProviderNote({ provider, huggingFaceStatus, ollamaStatus }) {
   if (provider === "mock") {
     return <div className="provider-note neutral">Mock mode is deterministic and works offline.</div>;
   }
   if (provider === "api") {
     return <div className="provider-note warning">The API provider is a placeholder in this prototype.</div>;
+  }
+  if (provider === "huggingface") {
+    if (!huggingFaceStatus) {
+      return <div className="provider-note neutral">Checking Hugging Face link...</div>;
+    }
+    if (huggingFaceStatus.available && huggingFaceStatus.modelAvailable) {
+      return (
+        <div className="provider-note success">
+          Hugging Face linked as {huggingFaceStatus.account}. Model {huggingFaceStatus.model} is available.
+        </div>
+      );
+    }
+    if (huggingFaceStatus.available) {
+      return (
+        <div className="provider-note warning">
+          Hugging Face account linked as {huggingFaceStatus.account}. {huggingFaceStatus.message}
+        </div>
+      );
+    }
+    return <div className="provider-note warning">{huggingFaceStatus.message}</div>;
   }
   if (!ollamaStatus) {
     return <div className="provider-note neutral">Checking Ollama...</div>;
@@ -834,6 +1036,16 @@ function RagPanel({
           <input value={form.title} onChange={(event) => updateField("title", event.target.value)} />
         </label>
         <label>
+          Vector Backend
+          <select value={form.vectorBackend} onChange={(event) => updateField("vectorBackend", event.target.value)}>
+            {vectorBackendOptions.map((backend) => (
+              <option key={backend.value} value={backend.value}>
+                {backend.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
           Embedding Model
           <input
             value={form.embeddingModel}
@@ -885,6 +1097,7 @@ function RagPanel({
                 <span>{collection.documents} docs</span>
                 <span>{collection.chunks} chunks</span>
                 <span>{collection.vectorCount ?? 0} vectors</span>
+                <span>{collection.vectorBackend || collection.backend || "no vectors"}</span>
               </div>
             ))}
           </div>
@@ -957,6 +1170,31 @@ function RetrievalPanel({ retrievals }) {
               <span>score {Number(match.score || 0).toFixed(4)}</span>
             </div>
             <p>{match.text}</p>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function McpCallsPanel({ calls }) {
+  return (
+    <section className="mcp-panel">
+      <div className="section-header">
+        <div>
+          <h2>MCP Calls</h2>
+          <p>{calls.length ? `${calls.length} MCP tool call(s) executed.` : "No MCP tool run yet."}</p>
+        </div>
+      </div>
+      <div className="mcp-call-grid">
+        {calls.map((call, index) => (
+          <article key={`${call.nodeId}-${call.toolId}-${call.timestamp || index}`}>
+            <div>
+              <strong>{call.toolId}</strong>
+              <span>{call.server || "demo"}</span>
+              <span>{call.nodeId}</span>
+            </div>
+            <pre>{JSON.stringify({ arguments: call.arguments, result: call.result }, null, 2)}</pre>
           </article>
         ))}
       </div>

@@ -14,17 +14,33 @@ except ModuleNotFoundError:
 ROOT = Path(__file__).resolve().parents[1]
 DATA_DIR = ROOT / "data"
 CHROMA_DIR = DATA_DIR / "chroma"
+FAISS_DIR = DATA_DIR / "faiss"
 FALLBACK_VECTOR_FILE = DATA_DIR / "vector_store.json"
 DEFAULT_COLLECTION = "course_docs"
 DEFAULT_EMBEDDING_MODEL = "nomic-embed-text"
 DEFAULT_BASE_URL = "http://127.0.0.1:11434"
+DEFAULT_VECTOR_BACKEND = "auto"
+LOCAL_JSON_BACKEND = "local-json-fallback"
+SUPPORTED_VECTOR_BACKENDS = {
+    "auto": "Auto (Chroma if installed, otherwise local JSON)",
+    "chroma": "Chroma",
+    LOCAL_JSON_BACKEND: "Local JSON fallback",
+    "faiss": "FAISS",
+}
 
 
 def vector_store_status():
     return {
-        "backend": "chroma" if chroma_available() else "local-json-fallback",
+        "backend": resolve_vector_backend(DEFAULT_VECTOR_BACKEND),
+        "defaultBackend": DEFAULT_VECTOR_BACKEND,
+        "supportedBackends": [
+            backend_status(name, label)
+            for name, label in SUPPORTED_VECTOR_BACKENDS.items()
+        ],
         "chromaInstalled": chroma_available(),
+        "faissInstalled": faiss_available(),
         "chromaPath": str(CHROMA_DIR),
+        "faissPath": str(FAISS_DIR),
         "fallbackPath": str(FALLBACK_VECTOR_FILE),
     }
 
@@ -38,8 +54,84 @@ def chroma_available():
         return False
 
 
+def faiss_available():
+    try:
+        import faiss  # noqa: F401
+
+        return True
+    except Exception:
+        return False
+
+
+def normalize_vector_backend(value):
+    backend = (value or DEFAULT_VECTOR_BACKEND).strip().lower()
+    aliases = {
+        "json": LOCAL_JSON_BACKEND,
+        "local": LOCAL_JSON_BACKEND,
+        "local-json": LOCAL_JSON_BACKEND,
+        "fallback": LOCAL_JSON_BACKEND,
+    }
+    backend = aliases.get(backend, backend)
+    if backend not in SUPPORTED_VECTOR_BACKENDS:
+        raise ValueError(
+            f"Unsupported vector backend '{value}'. "
+            f"Choose one of: {', '.join(SUPPORTED_VECTOR_BACKENDS)}."
+        )
+    return backend
+
+
+def resolve_vector_backend(requested=None):
+    backend = normalize_vector_backend(requested)
+    if backend == "auto":
+        return "chroma" if chroma_available() else LOCAL_JSON_BACKEND
+    return backend
+
+
+def backend_status(name, label):
+    if name == "auto":
+        resolved = resolve_vector_backend(name)
+        return {
+            "name": name,
+            "label": label,
+            "available": True,
+            "resolvedBackend": resolved,
+        }
+    if name == "chroma":
+        return {
+            "name": name,
+            "label": label,
+            "available": chroma_available(),
+            "message": "Install chromadb to use this backend." if not chroma_available() else "",
+        }
+    if name == "faiss":
+        return {
+            "name": name,
+            "label": label,
+            "available": False,
+            "installed": faiss_available(),
+            "message": "Adapter scaffolded; persistence/retrieval implementation is pending.",
+        }
+    return {
+        "name": name,
+        "label": label,
+        "available": True,
+        "message": "Stores vectors in data/vector_store.json.",
+    }
+
+
+def require_backend_available(backend):
+    if backend == "chroma" and not chroma_available():
+        raise ValueError("Chroma backend selected, but chromadb is not installed.")
+    if backend == "faiss":
+        raise ValueError(
+            "FAISS backend is selectable as an adapter scaffold, but ingestion/retrieval "
+            "is not implemented yet. Use Chroma or local JSON fallback for working runs."
+        )
+
+
 def list_vector_collections():
     collections = {}
+    errors = []
 
     if chroma_available():
         try:
@@ -57,13 +149,10 @@ def list_vector_collections():
                     "name": name,
                     "vectorCount": count,
                     "backend": "chroma",
+                    "backends": ["chroma"],
                 }
         except Exception as exc:
-            collections["_chroma_error"] = {
-                "name": "_chroma_error",
-                "error": str(exc),
-                "backend": "chroma",
-            }
+            errors.append(f"Chroma: {exc}")
 
     fallback_store = load_fallback_store()
     for name, items in fallback_store.get("collections", {}).items():
@@ -72,25 +161,26 @@ def list_vector_collections():
             {
                 "name": name,
                 "vectorCount": 0,
-                "backend": "local-json-fallback",
+                "backend": LOCAL_JSON_BACKEND,
+                "backends": [],
             },
         )
+        existing.setdefault("backends", [])
+        if LOCAL_JSON_BACKEND not in existing["backends"]:
+            existing["backends"].append(LOCAL_JSON_BACKEND)
         existing["fallbackCount"] = len(items)
         if existing.get("vectorCount") is None:
             existing["vectorCount"] = len(items)
+        if existing.get("backend") != LOCAL_JSON_BACKEND:
+            existing["backend"] = ", ".join(existing["backends"])
 
     return {
         "store": vector_store_status(),
         "collections": [
             value
             for key, value in sorted(collections.items())
-            if key != "_chroma_error"
         ],
-        "errors": [
-            value["error"]
-            for key, value in collections.items()
-            if key == "_chroma_error" and value.get("error")
-        ],
+        "errors": errors,
     }
 
 
@@ -122,6 +212,8 @@ def ingest_documents(payload):
     collection = payload.get("collection") or DEFAULT_COLLECTION
     embedding_model = payload.get("embeddingModel") or DEFAULT_EMBEDDING_MODEL
     base_url = payload.get("baseUrl") or DEFAULT_BASE_URL
+    vector_backend = resolve_vector_backend(payload.get("vectorBackend"))
+    require_backend_available(vector_backend)
     chunk_size = int(payload.get("chunkSize") or 700)
     chunk_overlap = int(payload.get("chunkOverlap") or 120)
     documents = payload.get("documents") or []
@@ -162,12 +254,12 @@ def ingest_documents(payload):
     texts = [chunk["text"] for chunk in chunks]
     embeddings, embedding_backend = embed_texts(texts, embedding_model, base_url)
 
-    if chroma_available():
+    if vector_backend == "chroma":
         upsert_chroma(collection, chunks, embeddings)
-        vector_backend = "chroma"
+    elif vector_backend == "faiss":
+        upsert_faiss(collection, chunks, embeddings)
     else:
         upsert_fallback(collection, chunks, embeddings)
-        vector_backend = "local-json-fallback"
 
     return {
         "status": "ingested",
@@ -183,22 +275,24 @@ def retrieve_context(config, query):
     collection = config.get("collection") or DEFAULT_COLLECTION
     embedding_model = config.get("embeddingModel") or DEFAULT_EMBEDDING_MODEL
     base_url = config.get("baseUrl") or DEFAULT_BASE_URL
+    vector_backend = resolve_vector_backend(config.get("vectorBackend"))
+    require_backend_available(vector_backend)
     top_k = int(config.get("topK") or 3)
 
     if not query.strip():
         return {
             "context": "Retriever received an empty query.",
             "matches": [],
-            "vectorBackend": vector_store_status()["backend"],
+            "vectorBackend": vector_backend,
         }
 
     query_embedding, embedding_backend = embed_texts([query], embedding_model, base_url)
-    if chroma_available():
+    if vector_backend == "chroma":
         matches = query_chroma(collection, query_embedding[0], top_k)
-        vector_backend = "chroma"
+    elif vector_backend == "faiss":
+        matches = query_faiss(collection, query_embedding[0], top_k)
     else:
         matches = query_fallback(collection, query_embedding[0], top_k)
-        vector_backend = "local-json-fallback"
 
     if not matches:
         return {
@@ -329,6 +423,20 @@ def query_chroma(collection, query_embedding, top_k):
             "score": 1 / (1 + float(distance)),
         })
     return matches
+
+
+def upsert_faiss(collection, chunks, embeddings):
+    raise ValueError(
+        "FAISS adapter is scaffolded but persistence is not implemented yet. "
+        "Use Chroma or local JSON fallback for working ingestion."
+    )
+
+
+def query_faiss(collection, query_embedding, top_k):
+    raise ValueError(
+        "FAISS adapter is scaffolded but retrieval is not implemented yet. "
+        "Use Chroma or local JSON fallback for working retrieval."
+    )
 
 
 def load_fallback_store():

@@ -1,7 +1,9 @@
 from .mock import MockProvider
 from .ollama import OllamaProvider
+from .huggingface import HuggingFaceProvider
 
 AGENT_PROVIDERS = {
+    "huggingface": HuggingFaceProvider(),
     "mock": MockProvider(),
     "ollama": OllamaProvider(),
 }

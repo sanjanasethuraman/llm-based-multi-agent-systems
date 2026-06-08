@@ -170,6 +170,7 @@ pre {
 .rag-panel,
 .bottom-panel > div,
 .retrieval-panel,
+.mcp-panel,
 .code-panel {
   background: var(--panel);
   border: 1px solid var(--line);
@@ -180,6 +181,7 @@ pre {
 .config,
 .rag-panel,
 .retrieval-panel,
+.mcp-panel,
 .bottom-panel > div,
 .code-panel {
   padding: 14px;
@@ -257,6 +259,10 @@ pre {
 
 .workflow-node.tool {
   background: #fff7ed;
+}
+
+.workflow-node.mcp_tool {
+  background: #eef2ff;
 }
 
 .workflow-node.output {
@@ -379,6 +385,16 @@ pre {
   font-size: 13px;
 }
 
+.checkbox-field {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.checkbox-field input {
+  width: auto;
+}
+
 .field-group {
   display: grid;
   gap: 8px;
@@ -388,7 +404,7 @@ pre {
 
 .segmented {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(2, 1fr);
   gap: 4px;
   padding: 4px;
   background: #f2f5f9;
@@ -468,6 +484,7 @@ pre {
 .rag-panel,
 .bottom-panel,
 .retrieval-panel,
+.mcp-panel,
 .code-panel {
   margin-top: 14px;
 }
@@ -602,6 +619,32 @@ pre {
   color: #314155;
   font-size: 13px;
   line-height: 1.45;
+}
+
+.mcp-call-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 10px;
+}
+
+.mcp-call-grid article {
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfdff;
+}
+
+.mcp-call-grid article div {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.mcp-call-grid article span {
+  color: var(--muted);
+  font-size: 12px;
 }
 
 .code-header {

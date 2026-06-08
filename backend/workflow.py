@@ -1,3 +1,4 @@
+import json
 import time
 from collections import defaultdict
 from pprint import pformat
@@ -6,7 +7,9 @@ from backend.nodes import get_node_executor
 from backend.utils import topological_order, preview_text
 
 
-VALID_NODE_TYPES = {"input", "agent", "tool", "output", "retriever", "vector_db"}
+VALID_NODE_TYPES = {"input", "agent", "tool", "output", "retriever", "vector_db", "mcp_tool"}
+VALID_AGENT_PROVIDERS = {"mock", "ollama", "huggingface", "api"}
+VALID_VECTOR_BACKENDS = {"auto", "chroma", "local-json-fallback", "faiss"}
 
 
 def validate_workflow(workflow):
@@ -70,6 +73,16 @@ def validate_workflow(workflow):
             warnings.append(f"Output node {node_id} has no incoming edge.")
         if node_type not in {"input", "output"} and incoming[node_id] == 0 and outgoing[node_id] == 0:
             warnings.append(f"Node {node_id} is disconnected.")
+        if node_type == "mcp_tool":
+            if not config.get("toolId") and not config.get("toolName"):
+                warnings.append(f"MCP tool node {node_id} has no tool selected.")
+            if config.get("arguments"):
+                try:
+                    parsed_arguments = json.loads(config.get("arguments"))
+                    if not isinstance(parsed_arguments, dict):
+                        errors.append(f"MCP tool node {node_id} arguments must be a JSON object.")
+                except Exception as exc:
+                    errors.append(f"MCP tool node {node_id} has invalid arguments JSON: {exc}.")
         if node_type == "retriever":
             query_edges = [
                 edge for edge in raw_edges
@@ -79,12 +92,32 @@ def validate_workflow(workflow):
                 warnings.append(f"Retriever node {node_id} has no query input.")
             if not config.get("collection"):
                 warnings.append(f"Retriever node {node_id} has no collection configured.")
+        if node_type in {"retriever", "vector_db"}:
+            vector_backend = config.get("vectorBackend", "auto")
+            if vector_backend not in VALID_VECTOR_BACKENDS:
+                errors.append(
+                    f"Node {node_id} has unsupported vector backend: {vector_backend}."
+                )
+            if vector_backend == "faiss":
+                warnings.append(
+                    f"Node {node_id} selects FAISS, which is scaffolded but not implemented."
+                )
         if node_type == "agent":
             provider = config.get("provider", "mock")
+            if provider not in VALID_AGENT_PROVIDERS:
+                errors.append(f"Agent node {node_id} has unsupported provider: {provider}.")
             if provider == "api":
                 warnings.append(f"Agent node {node_id} uses the placeholder api provider.")
             if provider == "ollama" and not config.get("model"):
                 warnings.append(f"Agent node {node_id} uses Ollama without a model name.")
+            if provider == "huggingface":
+                if not config.get("model"):
+                    warnings.append(f"Agent node {node_id} uses Hugging Face without a model id.")
+                if not config.get("huggingFaceToken"):
+                    warnings.append(
+                        f"Agent node {node_id} uses Hugging Face without a saved token; "
+                        "the backend will look for HF_TOKEN or HUGGING_FACE_API_TOKEN."
+                    )
 
     if not errors:
         try:
@@ -114,6 +147,7 @@ def run_workflow(workflow):
         "agentCalls": 0,
         "toolCalls": 0,
         "retrieverCalls": 0,
+        "mcpCalls": 0,
         "estimatedTokens": 0,
     }
 
@@ -123,7 +157,9 @@ def run_workflow(workflow):
         "edges": edges,
         "values": values,
         "logs": logs,
-        "stats": stats
+        "stats": stats,
+        "retrievals": retrievals,
+        "mcpCalls": [],
         }
 
     for node_id in order:
@@ -155,7 +191,9 @@ def run_workflow(workflow):
             "durationMs": round((time.perf_counter() - node_started) * 1000, 2),
             "outputPreview": preview_text(result),
             "matches": metadata.get("matches", []),
+            "mcpCall": metadata.get("mcpCall"),
         }
+        logs.append(log_item(node_id, node.get("type"), message or f"{node.get('type')} node executed.", status))
 
     final_output = "\n\n".join(values.get(node_id, "") for node_id in nodes if nodes[node_id].get("type") == "output")
     runtime_ms = round((time.perf_counter() - started) * 1000, 2)
@@ -171,6 +209,7 @@ def run_workflow(workflow):
         "executionOrder": order,
         "nodeResults": node_results,
         "retrievals": retrievals,
+        "mcpCalls": context["mcpCalls"],
         "validation": validation,
     }
 
@@ -195,9 +234,10 @@ Run:
 import json
 import hashlib
 import math
+import os
 from pathlib import Path
 from collections import defaultdict, deque
-from urllib import error, request
+from urllib import error, parse, request
 
 
 WORKFLOW = {serialized}
@@ -222,6 +262,7 @@ def run_workflow(workflow):
         "agentCalls": 0,
         "toolCalls": 0,
         "retrieverCalls": 0,
+        "mcpCalls": 0,
         "estimatedTokens": 0,
         "nodesExecuted": len(order),
     }}
@@ -249,6 +290,9 @@ def run_workflow(workflow):
         elif node_type == "tool":
             stats["toolCalls"] += 1
             result = run_tool(config, incoming)
+        elif node_type == "mcp_tool":
+            stats["mcpCalls"] += 1
+            result = run_mcp_tool(config, incoming)
         elif node_type == "output":
             result = incoming
         else:
@@ -302,6 +346,14 @@ def merge_vector_db_config(node_id, edges, nodes, config):
 
 def retrieve_context(config, query):
     collection = config.get("collection", "course_docs")
+    vector_backend = config.get("vectorBackend", "auto")
+    if vector_backend == "auto":
+        vector_backend = "local-json-fallback"
+    if vector_backend != "local-json-fallback":
+        return (
+            f"Generated Python export supports local-json-fallback retrieval only. "
+            f"The workflow selected '{{vector_backend}}' for collection '{{collection}}'."
+        )
     top_k = int(config.get("topK") or 3)
     query_embedding = hash_embedding(query)
     store = load_vector_store()
@@ -363,6 +415,8 @@ def run_agent(config, incoming):
     provider = config.get("provider", "mock")
     if provider == "ollama":
         return call_ollama(config, incoming)
+    if provider == "huggingface":
+        return call_huggingface(config, incoming)
     return f"[{{name}} | {{provider}}]\\nSystem prompt: {{system_prompt}}\\nInput: {{incoming}}\\nResponse: generated prototype answer"
 
 
@@ -399,6 +453,85 @@ def call_ollama(config, incoming):
         return f"[{{name}} | ollama error]\\n{{exc}}"
 
 
+def call_huggingface(config, incoming):
+    name = config.get("name", "Agent")
+    model = config.get("model") or "mistralai/Mistral-7B-Instruct-v0.3"
+    token = (
+        config.get("huggingFaceToken")
+        or config.get("hfToken")
+        or os.environ.get("HF_TOKEN")
+        or os.environ.get("HUGGING_FACE_API_TOKEN")
+        or ""
+    ).strip()
+    base_url = normalize_huggingface_base_url(config.get("baseUrl"))
+    if not token:
+        return (
+            f"[{{name}} | huggingface unavailable]\\n"
+            "No Hugging Face token was configured. Add a token or set HF_TOKEN / HUGGING_FACE_API_TOKEN."
+        )
+
+    payload = {{
+        "model": model,
+        "messages": [
+            {{
+                "role": "system",
+                "content": config.get("systemPrompt", "You are a helpful assistant."),
+            }},
+            {{"role": "user", "content": incoming}},
+        ],
+        "temperature": float(config.get("temperature", 0.2)),
+        "max_tokens": int(config.get("maxNewTokens") or 512),
+    }}
+    try:
+        data = json.dumps(payload).encode("utf-8")
+        req = request.Request(
+            f"{{base_url}}/chat/completions",
+            data=data,
+            headers={{
+                "Authorization": f"Bearer {{token}}",
+                "Content-Type": "application/json",
+            }},
+            method="POST",
+        )
+        with request.urlopen(req, timeout=120) as response:
+            result = json.loads(response.read().decode("utf-8"))
+        text = parse_huggingface_chat_completion(result)
+        return text or f"[{{name}} | huggingface] Empty response from {{model}}."
+    except error.HTTPError as exc:
+        return f"[{{name}} | huggingface error]\\nHTTP {{exc.code}}: {{read_error_detail(exc)}}"
+    except error.URLError as exc:
+        return f"[{{name}} | huggingface unavailable]\\nCould not reach Hugging Face for {{model}}.\\nDetails: {{exc}}"
+    except Exception as exc:
+        return f"[{{name}} | huggingface error]\\n{{exc}}"
+
+
+def normalize_huggingface_base_url(base_url=None):
+    endpoint = (base_url or "https://router.huggingface.co/v1").rstrip("/")
+    if endpoint == "https://api-inference.huggingface.co":
+        return "https://router.huggingface.co/v1"
+    return endpoint
+
+
+def parse_huggingface_chat_completion(result):
+    if isinstance(result, dict):
+        if result.get("error"):
+            raise ValueError(result["error"])
+        choices = result.get("choices") or []
+        if choices:
+            message = choices[0].get("message") or {{}}
+            return str(message.get("content") or choices[0].get("text") or "").strip()
+    return ""
+
+
+def read_error_detail(exc):
+    try:
+        body = exc.read().decode("utf-8")
+        payload = json.loads(body)
+        return payload.get("error") or payload.get("message") or body
+    except Exception:
+        return str(exc)
+
+
 def build_llm_prompt(config, incoming):
     return (
         f"System instructions:\\n{{config.get('systemPrompt', 'You are a helpful assistant.')}}\\n\\n"
@@ -413,6 +546,40 @@ def run_tool(config, incoming):
     if config.get("toolType") == "uppercase":
         return incoming.upper()
     return incoming
+
+
+def run_mcp_tool(config, incoming):
+    tool_id = config.get("toolId") or config.get("toolName") or "demo.lookup"
+    arguments = parse_mcp_arguments(config.get("arguments", "{{}}"))
+    if config.get("includeInput", True) and incoming and "input" not in arguments:
+        arguments["input"] = incoming
+    if tool_id == "demo.weather":
+        city = arguments.get("city") or "Berlin"
+        unit = arguments.get("unit") or "celsius"
+        suffix = "C" if unit == "celsius" else "F"
+        temperature = 18 if unit == "celsius" else 64
+        return f"Weather for {{city}}: {{temperature}}{{suffix}}, light wind, good conditions for a field demo."
+    if tool_id == "demo.score":
+        text = arguments.get("text") or arguments.get("input") or incoming
+        words = len(str(text).split())
+        score = min(100, 60 + words)
+        return f"Presentation readiness score: {{score}}/100. Basis: {{words}} words of input context."
+    topic = arguments.get("topic") or arguments.get("input") or incoming or "visual multi-agent systems"
+    return (
+        f"Lookup result for {{topic}}: emphasize visual orchestration, transparent execution, "
+        "and provider/tool modularity."
+    )
+
+
+def parse_mcp_arguments(value):
+    if isinstance(value, dict):
+        return dict(value)
+    if not value:
+        return {{}}
+    parsed = json.loads(value)
+    if not isinstance(parsed, dict):
+        raise ValueError("MCP arguments must be a JSON object.")
+    return parsed
 
 
 if __name__ == "__main__":

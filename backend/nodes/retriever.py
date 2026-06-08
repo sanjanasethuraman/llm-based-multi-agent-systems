@@ -10,8 +10,23 @@ class RetrieverNodeExecutor(NodeExecutor):
         query = collect_incoming(node["id"], context["edges"], context["values"], context["nodes"])
         merged_config = merge_vector_db_config(node["id"], context["edges"], context["nodes"], config)
 
-        matches = retrieve_context(query, merged_config)
-        result = "\n\n".join(match["text"] for match in matches)
+        try:
+            retrieval = retrieve_context(merged_config, query)
+        except ValueError as exc:
+            return "", {"status": "error", "message": str(exc), "matches": []}
+
+        matches = retrieval.get("matches", [])
+        result = retrieval.get("context", "")
         context["stats"]["retrieverCalls"] += 1
-        message = f"Retriever '{config.get('name', 'unnamed')}' executed successfully with {len(matches)} matches found."
+        context["retrievals"].append({
+            "nodeId": node["id"],
+            "collection": merged_config.get("collection"),
+            "vectorBackend": retrieval.get("vectorBackend"),
+            "embeddingBackend": retrieval.get("embeddingBackend"),
+            "matches": matches,
+        })
+        message = (
+            f"Retriever '{config.get('name', 'unnamed')}' used "
+            f"{retrieval.get('vectorBackend')} and found {len(matches)} matches."
+        )
         return result, {"status": "completed", "message": message, "matches": matches}

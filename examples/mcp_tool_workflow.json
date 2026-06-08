@@ -1,0 +1,56 @@
+{
+  "label": "MCP Tool Demo",
+  "description": "Runs a deterministic mock MCP lookup tool before the final writer agent.",
+  "workflow": {
+    "nodes": [
+      {
+        "id": "input-1",
+        "type": "input",
+        "label": "Demo Brief",
+        "position": { "x": 60, "y": 205 },
+        "config": {
+          "text": "Prepare a short demo note for a visual multi-agent systems presentation."
+        }
+      },
+      {
+        "id": "mcp-1",
+        "type": "mcp_tool",
+        "label": "MCP Lookup",
+        "position": { "x": 300, "y": 205 },
+        "config": {
+          "name": "MCP Lookup",
+          "server": "demo",
+          "toolId": "demo.lookup",
+          "arguments": "{\n  \"topic\": \"visual multi-agent systems\"\n}",
+          "includeInput": true
+        }
+      },
+      {
+        "id": "agent-1",
+        "type": "agent",
+        "label": "Demo Writer",
+        "position": { "x": 540, "y": 205 },
+        "config": {
+          "name": "Demo Writer",
+          "provider": "mock",
+          "model": "llama3.2:1b",
+          "baseUrl": "http://127.0.0.1:11434",
+          "temperature": 0.2,
+          "systemPrompt": "Write a concise demo summary using the MCP tool result."
+        }
+      },
+      {
+        "id": "output-1",
+        "type": "output",
+        "label": "Demo Output",
+        "position": { "x": 780, "y": 205 },
+        "config": {}
+      }
+    ],
+    "edges": [
+      { "source": "input-1", "target": "mcp-1" },
+      { "source": "mcp-1", "target": "agent-1" },
+      { "source": "agent-1", "target": "output-1" }
+    ]
+  }
+}
