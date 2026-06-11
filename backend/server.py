@@ -16,6 +16,8 @@ try:
         save_run,
         save_workflow,
     )
+    from agents.huggingface import check_huggingface_status
+    from mcp_registry import list_mcp_tools
     from rag import check_ollama_status, ingest_documents, list_vector_collections, vector_store_status
     from workflow import generate_python, run_workflow, validate_workflow
 except ModuleNotFoundError:
@@ -27,6 +29,8 @@ except ModuleNotFoundError:
         save_run,
         save_workflow,
     )
+    from backend.agents.huggingface import check_huggingface_status
+    from backend.mcp_registry import list_mcp_tools
     from backend.rag import check_ollama_status, ingest_documents, list_vector_collections, vector_store_status
     from backend.workflow import generate_python, run_workflow, validate_workflow
 
@@ -56,10 +60,18 @@ class AppHandler(BaseHTTPRequestHandler):
             return self._send_json(list_vector_collections())
         if parsed.path == "/api/documents/collections":
             return self._send_json(self._collections_payload())
+        if parsed.path == "/api/mcp/tools":
+            return self._send_json({"tools": list_mcp_tools()})
         if parsed.path == "/api/provider/ollama-status":
             params = parse_qs(parsed.query)
             base_url = params.get("baseUrl", [None])[0]
             return self._send_json(check_ollama_status(base_url))
+        if parsed.path == "/api/provider/huggingface-status":
+            params = parse_qs(parsed.query)
+            model = params.get("model", [None])[0]
+            token = params.get("token", [None])[0]
+            base_url = params.get("baseUrl", [None])[0]
+            return self._send_json(check_huggingface_status(model, token, base_url))
         if parsed.path == "/api/examples":
             return self._send_json(self._list_examples())
         if parsed.path == "/api/example":
@@ -84,6 +96,12 @@ class AppHandler(BaseHTTPRequestHandler):
                 return self._send_json({"code": generate_python(payload)})
             if self.path == "/api/validate":
                 return self._send_json(validate_workflow(payload))
+            if self.path == "/api/provider/huggingface-status":
+                return self._send_json(check_huggingface_status(
+                    payload.get("model"),
+                    payload.get("token"),
+                    payload.get("baseUrl"),
+                ))
             if self.path == "/api/save-workflow":
                 return self._save_workflow(payload)
             if self.path == "/api/export-python-file":

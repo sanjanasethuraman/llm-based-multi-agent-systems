@@ -1,11 +1,15 @@
 export const NODE_TYPES = {
   input: "Input",
   agent: "Agent",
+  mcp_tool: "MCP Tool",
   retriever: "Retriever",
   vector_db: "Vector DB",
   tool: "Tool",
   output: "Output",
 };
+
+const VALID_VECTOR_BACKENDS = new Set(["auto", "chroma", "local-json-fallback", "faiss"]);
+const VALID_AGENT_PROVIDERS = new Set(["mock", "ollama", "huggingface", "api"]);
 
 export const DEFAULT_WORKFLOW = {
   nodes: [
@@ -26,6 +30,8 @@ export const DEFAULT_WORKFLOW = {
         provider: "mock",
         model: "llama3.2:1b",
         baseUrl: "http://127.0.0.1:11434",
+        huggingFaceToken: "",
+        maxNewTokens: 512,
         temperature: 0.2,
         systemPrompt: "Break the user's request into a short implementation plan.",
       },
@@ -40,6 +46,8 @@ export const DEFAULT_WORKFLOW = {
         provider: "mock",
         model: "llama3.2:1b",
         baseUrl: "http://127.0.0.1:11434",
+        huggingFaceToken: "",
+        maxNewTokens: 512,
         temperature: 0.4,
         systemPrompt: "Write a concise final response based on the plan.",
       },
@@ -75,21 +83,32 @@ const DEFAULT_CONFIGS = {
     provider: "mock",
     model: "llama3.2:1b",
     baseUrl: "http://127.0.0.1:11434",
+    huggingFaceToken: "",
+    maxNewTokens: 512,
     temperature: 0.2,
     systemPrompt: "You are a helpful assistant.",
   },
   retriever: {
     collection: "course_docs",
+    vectorBackend: "auto",
     embeddingModel: "nomic-embed-text",
     baseUrl: "http://127.0.0.1:11434",
     topK: 3,
   },
   vector_db: {
     collection: "course_docs",
+    vectorBackend: "auto",
     embeddingModel: "nomic-embed-text",
     baseUrl: "http://127.0.0.1:11434",
   },
   tool: { name: "Tool", toolType: "echo" },
+  mcp_tool: {
+    name: "MCP Tool",
+    server: "demo",
+    toolId: "demo.lookup",
+    arguments: "{\n  \"topic\": \"visual multi-agent systems\"\n}",
+    includeInput: true,
+  },
   output: {},
 };
 
@@ -182,8 +201,48 @@ export function validateWorkflow(workflow) {
         warnings.push(`Retriever ${node.label || node.id} has no query input.`);
       }
     }
-    if (node.type === "agent" && node.config?.provider === "api") {
-      warnings.push(`Agent ${node.label || node.id} uses the placeholder api provider.`);
+    if (["retriever", "vector_db"].includes(node.type)) {
+      const vectorBackend = node.config?.vectorBackend || "auto";
+      if (!VALID_VECTOR_BACKENDS.has(vectorBackend)) {
+        errors.push(`Node ${node.label || node.id} has unsupported vector backend: ${vectorBackend}.`);
+      }
+      if (vectorBackend === "faiss") {
+        warnings.push(`Node ${node.label || node.id} selects FAISS, which is scaffolded but not implemented.`);
+      }
+    }
+    if (node.type === "agent") {
+      const provider = node.config?.provider || "mock";
+      if (!VALID_AGENT_PROVIDERS.has(provider)) {
+        errors.push(`Agent ${node.label || node.id} has unsupported provider: ${provider}.`);
+      }
+      if (provider === "api") {
+        warnings.push(`Agent ${node.label || node.id} uses the placeholder api provider.`);
+      }
+      if (provider === "huggingface") {
+        if (!node.config?.model) {
+          warnings.push(`Agent ${node.label || node.id} uses Hugging Face without a model id.`);
+        }
+        if (!node.config?.huggingFaceToken) {
+          warnings.push(
+            `Agent ${node.label || node.id} uses Hugging Face without a saved token; the backend will look for HF_TOKEN or HUGGING_FACE_API_TOKEN.`,
+          );
+        }
+      }
+    }
+    if (node.type === "mcp_tool") {
+      if (!node.config?.toolId && !node.config?.toolName) {
+        warnings.push(`MCP tool ${node.label || node.id} has no tool selected.`);
+      }
+      if (node.config?.arguments) {
+        try {
+          const parsedArguments = JSON.parse(node.config.arguments);
+          if (!parsedArguments || Array.isArray(parsedArguments) || typeof parsedArguments !== "object") {
+            errors.push(`MCP tool ${node.label || node.id} arguments must be a JSON object.`);
+          }
+        } catch (error) {
+          errors.push(`MCP tool ${node.label || node.id} has invalid arguments JSON: ${error.message}.`);
+        }
+      }
     }
   });
 
