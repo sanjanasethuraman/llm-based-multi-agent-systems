@@ -29,9 +29,20 @@ React + Python prototype for visually composing, running, and inspecting LLM-bas
 - `data/` is runtime-only local state and is ignored by Git.
 - `generated/` is runtime-only Python export output and is ignored by Git.
 
-## Run The App
+## Setup & Run The App
+### 1. Install Python dependencies
+Create and activate a Python virtual environment:
+```bash
+python -m venv .venv
+source .venv/bin/activate
+```
+Install backend dependencies:
+```bash
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
+```
 
-Install dependencies, build the React frontend, and start the Python backend:
+### 2. Install Node dependencies, build the React frontend, and start the Python backend:
 
 ```bash
 npm install
