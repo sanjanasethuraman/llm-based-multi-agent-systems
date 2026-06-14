@@ -1,7 +1,10 @@
+import base64
 import hashlib
+import io
 import json
 import math
 import time
+from html.parser import HTMLParser
 from pathlib import Path
 from urllib import error, request
 
@@ -9,6 +12,119 @@ try:
     from app_database import save_document_metadata
 except ModuleNotFoundError:
     from backend.app_database import save_document_metadata
+
+
+class HtmlTextExtractor(HTMLParser):
+    def __init__(self):
+        super().__init__()
+        self._chunks = []
+
+    def handle_data(self, data):
+        self._chunks.append(data)
+
+    def get_text(self):
+        return "".join(self._chunks)
+
+
+def html_to_text(html):
+    parser = HtmlTextExtractor()
+    parser.feed(html)
+    return parser.get_text()
+
+
+def extract_text_from_pdf(file_bytes):
+    try:
+        import pdfplumber
+
+        with pdfplumber.open(io.BytesIO(file_bytes)) as pdf:
+            return "\n\n".join(page.extract_text() or "" for page in pdf.pages)
+    except Exception:
+        pass
+
+    try:
+        from PyPDF2 import PdfReader
+
+        reader = PdfReader(io.BytesIO(file_bytes))
+        return "\n\n".join(page.extract_text() or "" for page in reader.pages)
+    except Exception:
+        raise ValueError(
+            "PDF ingestion requires pdfplumber or PyPDF2. Install one with `pip install pdfplumber PyPDF2`."
+        )
+
+
+def extract_text_from_docx(file_bytes):
+    try:
+        import docx
+
+        document = docx.Document(io.BytesIO(file_bytes))
+        paragraphs = [paragraph.text for paragraph in document.paragraphs if paragraph.text]
+        tables = []
+        for table in document.tables:
+            for row in table.rows:
+                for cell in row.cells:
+                    if cell.text:
+                        tables.append(cell.text)
+        return "\n".join(paragraphs + tables)
+    except Exception:
+        raise ValueError(
+            "DOCX ingestion requires python-docx. Install it with `pip install python-docx`."
+        )
+
+
+def extract_text_from_pptx(file_bytes):
+    try:
+        from pptx import Presentation
+
+        presentation = Presentation(io.BytesIO(file_bytes))
+        texts = []
+        for slide in presentation.slides:
+            for shape in slide.shapes:
+                if hasattr(shape, "text") and shape.text:
+                    texts.append(shape.text)
+                if shape.shape_type == 19 and shape.has_table:
+                    for row in shape.table.rows:
+                        for cell in row.cells:
+                            if cell.text:
+                                texts.append(cell.text)
+        return "\n".join(texts)
+    except Exception:
+        raise ValueError(
+            "PPTX ingestion requires python-pptx. Install it with `pip install python-pptx`."
+        )
+
+
+def extract_text_from_bytes(file_bytes, file_name, mime_type=None):
+    extension = Path(file_name).suffix.lower()
+    if extension in {".txt", ".md", ".csv", ".json", ".py", ".js", ".css"}:
+        return file_bytes.decode("utf-8", errors="replace")
+    if extension in {".html", ".htm"}:
+        return html_to_text(file_bytes.decode("utf-8", errors="replace"))
+    if extension == ".pdf":
+        return extract_text_from_pdf(file_bytes)
+    if extension == ".docx":
+        return extract_text_from_docx(file_bytes)
+    if extension == ".pptx":
+        return extract_text_from_pptx(file_bytes)
+    if extension == ".ppt":
+        raise ValueError(
+            "Legacy PPT (.ppt) is not supported. Please convert to PPTX and try again."
+        )
+    if mime_type and mime_type.startswith("text/"):
+        return file_bytes.decode("utf-8", errors="replace")
+    raise ValueError(
+        f"Unsupported document type '{extension}'. Supported file types include PDF, DOCX, PPTX, HTML, TXT, MD, CSV, JSON, PY, JS, and CSS."
+    )
+
+
+def decode_document_payload(doc):
+    if doc.get("text") is not None:
+        return doc["text"]
+    if doc.get("fileData"):
+        file_name = doc.get("fileName") or doc.get("title") or "document"
+        mime_type = doc.get("mimeType")
+        file_bytes = base64.b64decode(doc["fileData"])
+        return extract_text_from_bytes(file_bytes, file_name, mime_type)
+    raise ValueError("Document payload must include either text or encoded fileData for ingestion." )
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -232,7 +348,7 @@ def ingest_documents(payload):
 
     chunks = []
     for doc in documents:
-        text = doc.get("text", "")
+        text = decode_document_payload(doc)
         title = doc.get("title") or "Untitled document"
         source = doc.get("source") or "manual"
         doc_chunks = chunk_text(text, chunk_size, chunk_overlap)

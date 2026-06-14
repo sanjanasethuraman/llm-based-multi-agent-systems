@@ -20,9 +20,13 @@ class RetrieverNodeExecutor(NodeExecutor):
         context["stats"]["retrieverCalls"] += 1
         context["retrievals"].append({
             "nodeId": node["id"],
+            "nodeType": node["type"],
+            "nodeName": config.get("name") or node.get("label") or node["id"],
+            "stage": "retriever",
             "collection": merged_config.get("collection"),
             "vectorBackend": retrieval.get("vectorBackend"),
             "embeddingBackend": retrieval.get("embeddingBackend"),
+            "context": retrieval.get("context"),
             "matches": matches,
         })
         message = (

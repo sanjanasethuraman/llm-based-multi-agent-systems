@@ -13,6 +13,9 @@ React + Python prototype for visually composing, running, and inspecting LLM-bas
 - List document/vector collections.
 - Select a vector backend per ingestion/retriever path (auto, Chroma, local JSON, FAISS scaffold).
 - Show retrieved chunks from retriever nodes.
+- Display retrieval metadata on each chunk card, including stage, collection, chunk index, score, and vector backend.
+- Add retrieval-aware workflow metrics: retrieved chunks, retriever nodes, collections retrieved, and hit retrievals.
+- Show retriever execution results even when zero matches are returned.
 - Switch agents between mock, Ollama, and placeholder API providers.
 - Surface Ollama availability from the configured local provider URL.
 - Load example workflows for demos and evaluation.
@@ -51,7 +54,11 @@ npm run build
 python3 backend/server.py
 ```
 (If you get ModuleNotFoundErrors try "python3 -m backend.server" instead of "python3 backend/server.py)
+For richer document ingestion support (PDF, DOCX, PPTX), install the optional backend dependencies:
 
+```bash
+pip install -r requirements.txt
+```
 The server defaults to `http://127.0.0.1:8000`. If that port is already taken, it automatically tries the next ports and prints the URL it selected.
 
 Or run the demo helper:

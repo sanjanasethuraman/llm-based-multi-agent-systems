@@ -483,17 +483,46 @@ function WorkflowApp() {
     }
   }
 
+  async function arrayBufferToBase64(buffer) {
+    const bytes = new Uint8Array(buffer);
+    let binary = "";
+    const chunkSize = 0x8000;
+    for (let i = 0; i < bytes.length; i += chunkSize) {
+      binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
+    }
+    return btoa(binary);
+  }
+
+  function isBinaryDocument(file) {
+    const extension = file.name.slice(file.name.lastIndexOf(".")).toLowerCase();
+    return [".pdf", ".docx", ".pptx", ".ppt"].includes(extension) ||
+      file.type === "application/pdf" ||
+      file.type === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
+      file.type === "application/vnd.openxmlformats-officedocument.presentationml.presentation" ||
+      file.type === "application/vnd.ms-powerpoint";
+  }
+
+  async function readDocumentFile(file) {
+    const document = {
+      title: file.name,
+      source: `file:${file.name}`,
+      fileName: file.name,
+      mimeType: file.type || "application/octet-stream",
+    };
+
+    if (isBinaryDocument(file)) {
+      const fileData = await arrayBufferToBase64(await file.arrayBuffer());
+      return { ...document, fileData };
+    }
+
+    return { ...document, text: await file.text() };
+  }
+
   async function ingestDocuments() {
     try {
       setIngestStatus("Reading files...");
       const documents = ragForm.files.length
-        ? await Promise.all(
-            ragForm.files.map(async (file) => ({
-              title: file.name,
-              source: `file:${file.name}`,
-              text: await file.text(),
-            })),
-          )
+        ? await Promise.all(ragForm.files.map(readDocumentFile))
         : [];
 
       const payload = documents.length
@@ -521,8 +550,8 @@ function WorkflowApp() {
       setStatusMessage(`Ingested ${result.chunks} chunks into ${result.collection}.`);
       await refreshCollections();
     } catch (error) {
-      setIngestStatus(error.message);
-      setStatusMessage(error.message);
+      setIngestStatus(error.message || JSON.stringify(error));
+      setStatusMessage(error.message || JSON.stringify(error));
     }
   }
 
@@ -614,7 +643,7 @@ function WorkflowApp() {
         onRefreshCollections={refreshCollections}
       />
 
-      <ResultPanels output={output} logs={logs} stats={stats} />
+      <ResultPanels output={output} logs={logs} stats={stats} nodeResults={nodeResults} retrievals={retrievals} />
       <RetrievalPanel retrievals={retrievals} />
       <McpCallsPanel calls={mcpCalls} />
 
@@ -1067,7 +1096,7 @@ function RagPanel({
         <span>{form.files.length ? `${form.files.length} file(s) selected` : "Choose files for ingestion"}</span>
         <input
           multiple
-          accept=".txt,.md,.json,.csv,.py,.js,.css,text/*,application/json"
+          accept=".txt,.md,.json,.csv,.py,.js,.css,.html,.htm,.pdf,.docx,.pptx,text/*,application/json,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.presentationml.presentation"
           type="file"
           onChange={(event) => updateField("files", Array.from(event.target.files || []))}
         />
@@ -1120,56 +1149,567 @@ function RagPanel({
   );
 }
 
-function ResultPanels({ output, logs, stats }) {
+function ResultPanels({ output, logs, stats, nodeResults, retrievals }) {
+  const [selectedLogFilter, setSelectedLogFilter] = useState("all");
+  const [searchTerm, setSearchTerm] = useState("");
+  const [showFullOutput, setShowFullOutput] = useState(false);
+  const [copyStatus, setCopyStatus] = useState("");
+  const [resultsTab, setResultsTab] = useState("final");
+
+  const nodes = useMemo(
+    () =>
+      Object.entries(nodeResults || {}).map(([id, result]) => ({
+        id,
+        ...result,
+      })),
+    [nodeResults],
+  );
+
+  const nodesDisplayed = nodes.filter((node) => node.outputPreview || node.message || node.status);
+
+  const logCounts = useMemo(() => {
+    return logs.reduce(
+      (acc, log) => {
+        const status = log.status || "completed";
+        acc[status] = (acc[status] || 0) + 1;
+        acc.all += 1;
+        return acc;
+      },
+      { all: 0, completed: 0, warning: 0, error: 0 },
+    );
+  }, [logs]);
+
+  const filteredLogs = useMemo(() => {
+    return logs.filter((log) => {
+      if (selectedLogFilter !== "all" && (log.status || "completed") !== selectedLogFilter) {
+        return false;
+      }
+      if (!searchTerm.trim()) {
+        return true;
+      }
+      const needle = searchTerm.toLowerCase();
+      return `${log.nodeId} ${log.message} ${log.type || ""}`.toLowerCase().includes(needle);
+    });
+  }, [logs, selectedLogFilter, searchTerm]);
+
+  const handleCopyOutput = async () => {
+    try {
+      await navigator.clipboard.writeText(output || "");
+      setCopyStatus("Copied!");
+      window.setTimeout(() => setCopyStatus(""), 2000);
+    } catch (error) {
+      setCopyStatus("Copy failed");
+      window.setTimeout(() => setCopyStatus(""), 2000);
+    }
+  };
+
+  const outputPreview = showFullOutput ? output : output?.slice(0, 1200) || "";
+  const canShowMore = output && output.length > 1200;
+
   return (
     <section className="bottom-panel">
-      <div>
-        <h2>Results</h2>
-        <pre>{output}</pre>
+      <section className="results-panel">
+        <div className="section-header">
+          <div>
+            <h2>Results</h2>
+            <p>Review workflow output quickly and inspect node-level results when available.</p>
+          </div>
+        </div>
+        <div className="result-summary-grid">
+          <div className="stat-card">
+            <span>Final output</span>
+            <strong>{output ? `${Math.min(output.length, 1200)} chars shown` : "No output"}</strong>
+          </div>
+          <div className="stat-card">
+            <span>Node results</span>
+            <strong>{nodesDisplayed.length}</strong>
+          </div>
+          <div className="stat-card">
+            <span>Errors</span>
+            <strong>{logCounts.error}</strong>
+          </div>
+          <div className="stat-card">
+            <span>Warnings</span>
+            <strong>{logCounts.warning}</strong>
+          </div>
+        </div>
+        <div className="results-tabs">
+          <button
+            type="button"
+            className={`results-tab ${resultsTab === "final" ? "active" : ""}`}
+            onClick={() => setResultsTab("final")}
+          >
+            Final Output
+          </button>
+          <button
+            type="button"
+            className={`results-tab ${resultsTab === "nodes" ? "active" : ""}`}
+            onClick={() => setResultsTab("nodes")}
+          >
+            Node Outputs
+          </button>
+        </div>
+        <div className="result-output-card result-output-final">
+          <div className="result-output-header">
+            <div>
+              <strong>{resultsTab === "final" ? "Final Output" : "Node-level Output"}</strong>
+              <span>{resultsTab === "final" ? "The merged workflow output shown clearly." : "Inspect results returned by individual nodes."}</span>
+            </div>
+            <div className="result-output-actions">
+              <button className="icon-button" type="button" onClick={handleCopyOutput}>
+                Copy
+              </button>
+              {resultsTab === "final" && canShowMore && (
+                <button
+                  className="icon-button"
+                  type="button"
+                  onClick={() => setShowFullOutput((current) => !current)}
+                >
+                  {showFullOutput ? "Collapse" : "Expand"}
+                </button>
+              )}
+            </div>
+          </div>
+          {resultsTab === "final" ? (
+            <pre>{outputPreview || "No output yet."}</pre>
+          ) : nodesDisplayed.length ? (
+            <div className="node-results-list">
+              {nodesDisplayed.map((node) => (
+                <article key={node.id} className="node-result-item">
+                  <div className="node-result-header">
+                    <div>
+                      <strong>{node.id}</strong>
+                      <span>{node.type}</span>
+                    </div>
+                    <StatusBadge status={node.status || "idle"} />
+                  </div>
+                  <div className="node-result-meta">
+                    <span>{node.durationMs?.toFixed(2) ?? "0"}ms</span>
+                    {node.message ? <span>{node.message}</span> : null}
+                  </div>
+                  <pre>{node.outputPreview || "No preview available."}</pre>
+                </article>
+              ))}
+            </div>
+          ) : (
+            <div className="node-results-empty">No node-level results available yet.</div>
+          )}
+          {copyStatus && <div className="copy-feedback">{copyStatus}</div>}
+        </div>
+      </section>
+
+      <section className="logs-panel">
+        <div className="section-header">
+          <div>
+            <h2>Logs</h2>
+            <p>Filter and search execution logs for better insight.</p>
+          </div>
+        </div>
+        <div className="log-toolbar">
+          <div className="log-filters">
+            {[
+              { key: "all", label: `All (${logCounts.all})` },
+              { key: "completed", label: `Done (${logCounts.completed})` },
+              { key: "warning", label: `Warn (${logCounts.warning})` },
+              { key: "error", label: `Error (${logCounts.error})` },
+            ].map((filter) => (
+              <button
+                key={filter.key}
+                type="button"
+                className={`filter-button ${selectedLogFilter === filter.key ? "active" : ""}`}
+                onClick={() => setSelectedLogFilter(filter.key)}
+              >
+                {filter.label}
+              </button>
+            ))}
+          </div>
+          <input
+            className="log-search"
+            placeholder="Search logs"
+            value={searchTerm}
+            onChange={(event) => setSearchTerm(event.target.value)}
+          />
+        </div>
+        <div className="log-summary-grid">
+          <div className="log-stat-card">
+            <strong>{filteredLogs.length}</strong>
+            <span>Shown</span>
+          </div>
+          <div className="log-stat-card">
+            <strong>{logCounts.error}</strong>
+            <span>Total errors</span>
+          </div>
+          <div className="log-stat-card">
+            <strong>{logCounts.warning}</strong>
+            <span>Total warnings</span>
+          </div>
+        </div>
+        <div className="log-list">
+          {filteredLogs.length ? (
+            filteredLogs.map((item, index) => (
+              <article key={`${item.nodeId}-${index}`} className={`log-entry ${item.status || "completed"}`}>
+                <div className="log-entry-header">
+                  <StatusBadge status={item.status || "completed"} />
+                  <span className="log-entry-meta">{item.nodeId}</span>
+                </div>
+                <p>{item.message}</p>
+              </article>
+            ))
+          ) : (
+            <p className="log-empty">No logs match the current filter.</p>
+          )}
+        </div>
+      </section>
+
+      <WorkflowStatsPanel stats={stats} retrievals={retrievals} />
+      <NodeStatsPanel nodeResults={nodeResults} stats={stats} />
+    </section>
+  );
+}
+
+function WorkflowStatsPanel({ stats, retrievals }) {
+  const retrievedChunks = useMemo(
+    () => retrievals?.reduce((acc, retrieval) => acc + (retrieval.matches?.length || 0), 0) || 0,
+    [retrievals],
+  );
+
+  const retrieverNodes = useMemo(
+    () => new Set((retrievals || []).map((retrieval) => retrieval.nodeId)).size,
+    [retrievals],
+  );
+
+  const retrievalCollections = useMemo(
+    () => new Set((retrievals || []).map((retrieval) => retrieval.collection)).size,
+    [retrievals],
+  );
+
+  const retrievalsWithMatches = useMemo(
+    () => (retrievals || []).filter((retrieval) => (retrieval.matches || []).length > 0).length,
+    [retrievals],
+  );
+
+  const metricCards = [
+    { label: "Workflow runtime", value: stats?.runtimeMs, unit: "ms", key: "runtimeMs" },
+    { label: "Nodes executed", value: stats?.nodesExecuted, unit: "", key: "nodesExecuted" },
+    { label: "Agent calls", value: stats?.agentCalls, unit: "", key: "agentCalls" },
+    { label: "Tool calls", value: stats?.toolCalls, unit: "", key: "toolCalls" },
+    { label: "Retriever calls", value: stats?.retrieverCalls, unit: "", key: "retrieverCalls" },
+    { label: "Retrieved chunks", value: retrievedChunks, unit: "", key: "retrievedChunks" },
+    { label: "Retriever nodes", value: retrieverNodes, unit: "", key: "retrieverNodes" },
+    { label: "Collections retrieved", value: retrievalCollections, unit: "", key: "retrievalCollections" },
+    { label: "Hit retrievals", value: retrievalsWithMatches, unit: "", key: "retrievalsWithMatches" },
+    { label: "MCP calls", value: stats?.mcpCalls, unit: "", key: "mcpCalls" },
+    { label: "Tokens est.", value: stats?.estimatedTokens, unit: "", key: "estimatedTokens" },
+  ];
+
+  const [selectedMetric, setSelectedMetric] = useState(metricCards[0].key);
+  const selected = metricCards.find((card) => card.key === selectedMetric) || metricCards[0];
+
+  return (
+    <section className="workflow-stats-panel">
+      <div className="section-header">
+        <div>
+          <h2>Workflow Stats</h2>
+          <p>Interactive execution metrics for your workflow run.</p>
+        </div>
       </div>
-      <div>
-        <h2>Logs</h2>
-        <pre>
-          {logs.length
-            ? logs.map((item) => `${item.nodeId}: [${item.status || "completed"}] ${item.message}`).join("\n")
-            : "No logs yet."}
-        </pre>
+      <div className="workflow-stats-grid">
+        {metricCards.map((card) => (
+          <button
+            key={card.key}
+            type="button"
+            className={`metric-card ${selectedMetric === card.key ? "active" : ""}`}
+            onClick={() => setSelectedMetric(card.key)}
+          >
+            <span>{card.label}</span>
+            <strong>{card.value ?? 0}{card.unit}</strong>
+          </button>
+        ))}
       </div>
-      <div>
-        <h2>Statistics</h2>
-        <pre>{stats ? JSON.stringify(stats, null, 2) : "No statistics yet."}</pre>
+      <div className="metric-detail-card">
+        <div className="metric-detail-header">
+          <h3>{selected.label}</h3>
+          <span>{selected.value ?? 0}{selected.unit}</span>
+        </div>
+        <p>
+          {selected.key === "runtimeMs" && "Total time required to execute the workflow."}
+          {selected.key === "nodesExecuted" && "The number of nodes that ran in this workflow execution."}
+          {selected.key === "agentCalls" && "How many agent nodes triggered language model calls."}
+          {selected.key === "toolCalls" && "Count of tool nodes executed during the workflow."}
+          {selected.key === "retrieverCalls" && "Retriever nodes that fetched context from the vector store."}
+          {selected.key === "retrievedChunks" && "Total matched chunks returned by retriever nodes."}
+          {selected.key === "retrieverNodes" && "Number of retriever nodes that participated in this run."}
+          {selected.key === "retrievalCollections" && "Distinct vector collections queried during retrieval."}
+          {selected.key === "retrievalsWithMatches" && "Retriever executions that returned at least one matched chunk."}
+          {selected.key === "mcpCalls" && "MCP tool invocations made during execution."}
+          {selected.key === "estimatedTokens" && "Rough total token usage estimated from generated and retrieved text."}
+        </p>
       </div>
     </section>
   );
 }
 
+function NodeStatsPanel({ nodeResults, stats }) {
+  const nodes = useMemo(
+    () =>
+      Object.entries(nodeResults || {}).map(([id, result]) => ({
+        id,
+        ...result,
+      })),
+    [nodeResults],
+  );
+
+  const [activeTab, setActiveTab] = useState("overview");
+  const [selectedType, setSelectedType] = useState("all");
+  const [focusedNode, setFocusedNode] = useState(null);
+
+  if (!nodes.length) {
+    return (
+      <div>
+        <h2>Node Statistics</h2>
+        <p>No node execution stats available yet.</p>
+      </div>
+    );
+  }
+
+  const nodesSorted = [...nodes].sort((a, b) => (b.durationMs || 0) - (a.durationMs || 0));
+  const durations = nodes.map((node) => node.durationMs || 0);
+  const maxDuration = Math.max(...durations, 1);
+  const totalDuration = durations.reduce((sum, value) => sum + value, 0);
+  const averageDuration = (totalDuration / nodes.length).toFixed(2);
+
+  const typeStats = Object.values(
+    nodes.reduce((acc, node) => {
+      const type = node.type || "unknown";
+      const duration = node.durationMs || 0;
+      if (!acc[type]) {
+        acc[type] = { type, count: 0, totalDuration: 0 };
+      }
+      acc[type].count += 1;
+      acc[type].totalDuration += duration;
+      return acc;
+    }, {}),
+  ).map((entry) => ({
+    ...entry,
+    averageDuration: entry.count ? entry.totalDuration / entry.count : 0,
+  })).sort((a, b) => b.totalDuration - a.totalDuration);
+
+  const nodeTypes = ["all", ...new Set(nodes.map((node) => node.type || "unknown"))];
+  const filteredNodes = selectedType === "all" ? nodes : nodes.filter((node) => node.type === selectedType);
+
+  const renderTabContent = () => {
+    switch (activeTab) {
+      case "overview":
+        return (
+          <div className="node-stat-overview-grid">
+            {filteredNodes.map((node, index) => (
+              <article
+                key={node.id}
+                className={`node-stat-summary ${focusedNode === node.id ? "focused" : ""}`}
+                onMouseEnter={() => setFocusedNode(node.id)}
+                onMouseLeave={() => setFocusedNode(null)}
+              >
+                <div className="node-stat-summary-header">
+                  <strong>{node.id}</strong>
+                  <StatusBadge status={node.status || "idle"} />
+                </div>
+                <span>{node.type}</span>
+                <div className="node-stat-summary-values">
+                  <strong>{(node.durationMs || 0).toFixed(2)}ms</strong>
+                  <span>{node.outputPreview ? "Output available" : "No output"}</span>
+                </div>
+              </article>
+            ))}
+          </div>
+        );
+      case "slowest":
+        return (
+          <div className="node-ranking-list">
+            {nodesSorted.slice(0, 8).map((node, index) => (
+              <div
+                key={node.id}
+                className={`node-ranking-item ${focusedNode === node.id ? "focused" : ""}`}
+                onMouseEnter={() => setFocusedNode(node.id)}
+                onMouseLeave={() => setFocusedNode(null)}
+              >
+                <span>{index + 1}</span>
+                <div>
+                  <strong>{node.id}</strong>
+                  <div className="node-ranking-meta">
+                    <span>{node.type}</span>
+                    <span>{(node.durationMs || 0).toFixed(2)}ms</span>
+                  </div>
+                </div>
+                <StatusBadge status={node.status || "idle"} />
+              </div>
+            ))}
+          </div>
+        );
+      case "type":
+        return (
+          <div className="type-breakdown-list">
+            {typeStats.map((typeStat) => (
+              <article key={typeStat.type} className="type-breakdown-item">
+                <strong>{typeStat.type}</strong>
+                <span>{typeStat.count} node{typeStat.count === 1 ? "" : "s"}</span>
+                <span>{typeStat.totalDuration.toFixed(2)}ms total</span>
+                <span>{typeStat.averageDuration.toFixed(2)}ms avg</span>
+              </article>
+            ))}
+          </div>
+        );
+      default:
+        return (
+          <div className="chart-grid">
+            {nodesSorted.map((node) => (
+              <div
+                key={node.id}
+                className={`chart-row ${focusedNode === node.id ? "focused" : ""}`}
+                onMouseEnter={() => setFocusedNode(node.id)}
+                onMouseLeave={() => setFocusedNode(null)}
+              >
+                <div className="chart-label">
+                  <strong>{node.id}</strong>
+                  <span>{node.type}</span>
+                </div>
+                <div className="chart-bar">
+                  <div
+                    className="chart-fill"
+                    style={{ width: `${((node.durationMs || 0) / maxDuration) * 100}%` }}
+                  />
+                </div>
+                <span className="chart-value">{(node.durationMs || 0).toFixed(2)}ms</span>
+              </div>
+            ))}
+          </div>
+        );
+    }
+  };
+
+  return (
+    <section className="node-stats-panel interactive">
+      <div className="section-header">
+        <div>
+          <h2>Node Execution Insights</h2>
+          <p>More detailed stats for workflow node performance.</p>
+        </div>
+      </div>
+      <div className="node-stats-overview">
+        <div className="stat-card">
+          <strong>{stats?.nodesExecuted ?? nodes.length}</strong>
+          <span>Nodes executed</span>
+        </div>
+        <div className="stat-card">
+          <strong>{stats?.runtimeMs ?? totalDuration}ms</strong>
+          <span>Total runtime</span>
+        </div>
+        <div className="stat-card">
+          <strong>{averageDuration}ms</strong>
+          <span>Avg node duration</span>
+        </div>
+        <div className="stat-card">
+          <strong>{nodesSorted[0]?.id || "-"}</strong>
+          <span>Slowest node</span>
+        </div>
+      </div>
+      <div className="node-stats-control-bar">
+        <div className="node-stats-tabs">
+          {[
+            { key: "overview", label: "Overview" },
+            { key: "slowest", label: "Slowest" },
+            { key: "type", label: "Type" },
+            { key: "chart", label: "Chart" },
+          ].map((tab) => (
+            <button
+              key={tab.key}
+              type="button"
+              className={`tab-button ${activeTab === tab.key ? "active" : ""}`}
+              onClick={() => setActiveTab(tab.key)}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+        <select
+          className="node-type-filter"
+          value={selectedType}
+          onChange={(event) => setSelectedType(event.target.value)}
+        >
+          {nodeTypes.map((type) => (
+            <option key={type} value={type}>
+              {type === "all" ? "All node types" : type}
+            </option>
+          ))}
+        </select>
+      </div>
+      {renderTabContent()}
+    </section>
+  );
+}
+
 function RetrievalPanel({ retrievals }) {
-  const matches = retrievals.flatMap((retrieval) => (
-    (retrieval.matches || []).map((match, index) => ({
+  const matches = retrievals.flatMap((retrieval) => {
+    const hits = (retrieval.matches || []).map((match, index) => ({
       ...match,
       nodeId: retrieval.nodeId,
+      nodeType: retrieval.nodeType,
+      nodeName: retrieval.nodeName,
+      stage: retrieval.stage,
       collection: retrieval.collection,
+      vectorBackend: retrieval.vectorBackend,
+      embeddingBackend: retrieval.embeddingBackend,
+      retrievalContext: retrieval.context,
       index,
-    }))
-  ));
+    }));
+
+    if (hits.length) {
+      return hits;
+    }
+
+    return [{
+      nodeId: retrieval.nodeId,
+      nodeType: retrieval.nodeType,
+      nodeName: retrieval.nodeName,
+      stage: retrieval.stage,
+      collection: retrieval.collection,
+      vectorBackend: retrieval.vectorBackend,
+      embeddingBackend: retrieval.embeddingBackend,
+      retrievalContext: retrieval.context,
+      index: null,
+      text: retrieval.context || "Retriever executed with no matches.",
+      score: null,
+      metadata: {},
+      placeholder: true,
+    }];
+  });
+
+  const retrievedChunkCount = matches.filter((match) => !match.placeholder).length;
+  const hasRetrieverRun = retrievals.length > 0;
 
   return (
     <section className="retrieval-panel">
       <div className="section-header">
         <div>
           <h2>Retrieved Chunks</h2>
-          <p>{matches.length ? `${matches.length} chunks returned by retriever nodes.` : "No retriever run yet."}</p>
+          <p>{hasRetrieverRun ? `${retrievedChunkCount} chunks returned by retriever nodes.` : "No retriever run yet."}</p>
         </div>
       </div>
       <div className="retrieved-chunks">
         {matches.map((match) => (
-          <article key={`${match.nodeId}-${match.index}-${match.metadata?.chunkIndex}`}>
+          <article key={`${match.nodeId}-${match.index}-${match.metadata?.chunkIndex}-${match.placeholder ? "none" : "match"}`}>
             <div>
-              <strong>{match.metadata?.title || "Untitled"}</strong>
-              <span>{match.collection}</span>
-              <span>score {Number(match.score || 0).toFixed(4)}</span>
+              <strong>{match.metadata?.title || (match.placeholder ? "Retriever result" : "Untitled")}</strong>
+              <span>{match.nodeName || match.nodeId}</span>
+              <span>Stage: {match.stage}</span>
+              <span>Collection: {match.collection}</span>
+              <span>{match.placeholder ? "no chunks" : `Chunk ${match.metadata?.chunkIndex ?? match.index}`}</span>
+              {match.placeholder ? null : <span>Score: {Number(match.score || 0).toFixed(4)}</span>}
+              {!match.placeholder && match.vectorBackend ? <span>Vector: {match.vectorBackend}</span> : null}
             </div>
             <p>{match.text}</p>
+            <div className="retrieval-meta">
+              <small>{match.placeholder ? (match.retrievalContext || "No matches were found.") : `source: ${match.metadata?.source || "unknown"}`}</small>
+            </div>
           </article>
         ))}
       </div>
