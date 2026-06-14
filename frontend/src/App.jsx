@@ -108,6 +108,24 @@ function WorkflowApp() {
   );
   const nextId = useMemo(() => calculateNextId(workflow), [workflow]);
 
+  const retrievalByNode = useMemo(() => {
+    const map = {};
+    (retrievals || []).forEach((retrieval) => {
+      if (!map[retrieval.nodeId]) {
+        map[retrieval.nodeId] = {
+          nodeId: retrieval.nodeId,
+          nodeName: retrieval.nodeName,
+          collection: retrieval.collection,
+          vectorBackend: retrieval.vectorBackend,
+          embeddingBackend: retrieval.embeddingBackend,
+          matches: [],
+        };
+      }
+      map[retrieval.nodeId].matches.push(...(retrieval.matches || []));
+    });
+    return map;
+  }, [retrievals]);
+
   const flowNodes = useMemo(
     () =>
       workflow.nodes.map((node) => ({
@@ -118,9 +136,10 @@ function WorkflowApp() {
         data: {
           node,
           result: nodeResults[node.id],
+          retrievalInfo: retrievalByNode[node.id],
         },
       })),
-    [nodeResults, selected, workflow.nodes],
+    [nodeResults, selected, workflow.nodes, retrievalByNode],
   );
 
   const flowEdges = useMemo(
@@ -129,6 +148,8 @@ function WorkflowApp() {
         const id = edgeId(edge);
         const sourceStatus = nodeResults[edge.source]?.status;
         const targetStatus = nodeResults[edge.target]?.status;
+        const retrievalInfo = retrievalByNode[edge.source];
+        const matchingChunks = retrievalInfo?.matches?.length || 0;
         return {
           id,
           source: edge.source,
@@ -137,9 +158,12 @@ function WorkflowApp() {
           animated: sourceStatus === "completed" && targetStatus === "completed",
           markerEnd: { type: MarkerType.ArrowClosed },
           className: `flow-edge ${sourceStatus || ""} ${targetStatus || ""}`,
+          label: matchingChunks > 0 ? `${matchingChunks} chunk${matchingChunks === 1 ? "" : "s"}` : undefined,
+          labelBgPadding: [8, 6],
+          labelBgStyle: matchingChunks > 0 ? { fill: "rgba(255,255,255,0.94)", color: "#1f2937", fillOpacity: 0.9, stroke: "#cbd5e1" } : undefined,
         };
       }),
-    [nodeResults, selected, workflow.edges],
+    [nodeResults, selected, workflow.edges, retrievalByNode],
   );
 
   useEffect(() => {
@@ -659,8 +683,11 @@ function WorkflowApp() {
 }
 
 function WorkflowNode({ data, selected }) {
-  const { node, result } = data;
+  const { node, result, retrievalInfo } = data;
   const status = result?.status || "idle";
+  const chunkCount = retrievalInfo?.matches?.length || 0;
+  const details = retrievalInfo && chunkCount > 0;
+
   return (
     <div className={`workflow-node ${node.type} ${status} ${selected ? "selected" : ""}`}>
       <Handle className="node-handle target" type="target" position={Position.Left} />
@@ -673,6 +700,13 @@ function WorkflowNode({ data, selected }) {
         {node.type === "agent" && <span>{node.config?.provider || "mock"}</span>}
         {node.type === "mcp_tool" && <span>{node.config?.toolId || "unselected"}</span>}
       </div>
+      {details && (
+        <div className="node-retrieval-summary">
+          <span>{chunkCount} retrieved chunk{chunkCount === 1 ? "" : "s"}</span>
+          <span>{retrievalInfo.collection}</span>
+          <span>{retrievalInfo.vectorBackend}</span>
+        </div>
+      )}
       {result?.message && <p>{result.message}</p>}
       <Handle className="node-handle source" type="source" position={Position.Right} />
     </div>

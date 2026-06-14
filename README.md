@@ -14,6 +14,7 @@ React + Python prototype for visually composing, running, and inspecting LLM-bas
 - Select a vector backend per ingestion/retriever path (auto, Chroma, local JSON, FAISS scaffold).
 - Show retrieved chunks from retriever nodes.
 - Display retrieval metadata on each chunk card, including stage, collection, chunk index, score, and vector backend.
+- Show retrieval chunk usage on the workflow graph with retriever node badges and edge labels.
 - Add retrieval-aware workflow metrics: retrieved chunks, retriever nodes, collections retrieved, and hit retrievals.
 - Show retriever execution results even when zero matches are returned.
 - Switch agents between mock, Ollama, and placeholder API providers.
