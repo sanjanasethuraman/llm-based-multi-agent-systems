@@ -23,6 +23,7 @@
           "model": "llama3.2:1b",
           "baseUrl": "http://127.0.0.1:11434",
           "temperature": 0.3,
+          "think": false,
           "systemPrompt": "Write compact release notes from the brief."
         }
       },

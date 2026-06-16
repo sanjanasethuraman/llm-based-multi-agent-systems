@@ -1,5 +1,5 @@
 class AgentProvider:
     name = "base"
 
-    def run(self, config, incoming, available_tools):
+    async def run(self, config, incoming, mcp_client, available_tools):
         raise NotImplementedError("Subclasses must implement the run method.")

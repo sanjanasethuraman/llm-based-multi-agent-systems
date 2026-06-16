@@ -36,6 +36,9 @@ import {
   validateWorkflow,
 } from "./workflow.js";
 
+import McpServersPanel from "./components/panels/McpServersPanel.jsx"
+import IconButton from "./components/IconButton.jsx";
+
 const nodeTypes = { workflow: WorkflowNode };
 const providerOptions = [
   { value: "mock", label: "Mock" },
@@ -80,6 +83,7 @@ function WorkflowApp() {
   const [retrievals, setRetrievals] = useState([]);
   const [mcpCalls, setMcpCalls] = useState([]);
   const [mcpTools, setMcpTools] = useState([]);
+  const [mcpServers, setMcpServers] = useState([]);
   const [examples, setExamples] = useState([]);
   const [selectedExample, setSelectedExample] = useState("");
   const [collections, setCollections] = useState([]);
@@ -500,8 +504,36 @@ function WorkflowApp() {
 
   async function refreshMcpTools() {
     try {
-      const result = await getJson("/api/mcp/tools");
-      setMcpTools(result.tools || []);
+      const [toolsResult, serversResult] = await Promise.all([
+        getJson("/api/mcp/tools"),
+        getJson("/api/mcp/servers"),
+      ]);
+      console.log("tools response:", toolsResult);
+      console.log("servers response:", serversResult);
+      setMcpTools(toolsResult.tools || []);
+      setMcpServers(serversResult.servers || []);
+    } catch (error) {
+      console.error("refreshMcpTools error:", error);
+      setStatusMessage(error.message);
+    }
+  }
+
+  async function connectMcpServer(config) {
+    try {
+      setStatusMessage(`Connecting to ${config.label}...`);
+      await postJson("/api/mcp/connect", config);
+      await refreshMcpTools();
+      setStatusMessage(`Connected: ${config.label}`);
+    } catch (error) {
+      setStatusMessage(error.message);
+    }
+  }
+
+  async function disconnectMcpServer(id) {
+    try {
+      await postJson("/api/mcp/disconnect", { id });
+      await refreshMcpTools();
+      setStatusMessage(`Disconnected server: ${id}`);
     } catch (error) {
       setStatusMessage(error.message);
     }
@@ -651,6 +683,7 @@ function WorkflowApp() {
           validation={validation}
           huggingFaceStatus={huggingFaceStatus}
           mcpTools={mcpTools}
+          mcpServers={mcpServers}
           ollamaStatus={ollamaStatus}
           onNodeChange={updateNode}
         />
@@ -665,6 +698,13 @@ function WorkflowApp() {
         onFormChange={setRagForm}
         onIngest={ingestDocuments}
         onRefreshCollections={refreshCollections}
+      />
+
+      <McpServersPanel
+        servers={mcpServers}
+        onConnect={connectMcpServer}
+        onDisconnect={disconnectMcpServer}
+        onRefresh={refreshMcpTools}
       />
 
       <ResultPanels output={output} logs={logs} stats={stats} nodeResults={nodeResults} retrievals={retrievals} />
@@ -698,6 +738,7 @@ function WorkflowNode({ data, selected }) {
       <div className="node-meta">
         <span>{NODE_TYPES[node.type] || node.type}</span>
         {node.type === "agent" && <span>{node.config?.provider || "mock"}</span>}
+        {node.type === "tool" && <span>{node.config?.toolName || "unselected"}</span>}
         {node.type === "mcp_tool" && <span>{node.config?.toolId || "unselected"}</span>}
       </div>
       {details && (
@@ -728,7 +769,7 @@ function Palette({ onAddNode }) {
   );
 }
 
-function ConfigPanel({ node, validation, huggingFaceStatus, mcpTools, ollamaStatus, onNodeChange }) {
+function ConfigPanel({ node, validation, huggingFaceStatus, mcpTools, mcpServers, ollamaStatus, onNodeChange }) {
   if (!node) {
     return (
       <aside className="config">
@@ -848,6 +889,13 @@ function ConfigPanel({ node, validation, huggingFaceStatus, mcpTools, ollamaStat
               />
             </label>
             <label>
+              Think
+              <select value={node.config.think ?? false} onChange={(event) => updateConfig({ think: event.target.value })}>
+                <option value={true}>true</option>
+                <option value={false}>false</option>
+              </select>
+            </label>
+            <label>
               System Prompt
               <textarea
                 rows={6}
@@ -916,23 +964,47 @@ function ConfigPanel({ node, validation, huggingFaceStatus, mcpTools, ollamaStat
         {node.type === "tool" && (
           <>
             <label>
-              Tool Name
-              <input
-                value={node.config.name || ""}
-                onChange={(event) => updateConfig({ name: event.target.value })}
-              />
-            </label>
-            <label>
-              Tool Type
+              Tool
               <select
-                value={node.config.toolType || "echo"}
-                onChange={(event) => updateConfig({ toolType: event.target.value })}
+                value={node.config.toolName ? `${node.config.serverId}::${node.config.toolName}` : ""}
+                onChange={(event) => {
+                  const [serverId, toolName] = event.target.value.split("::");
+                  const tool = mcpTools.find(t => t.name === toolName && t.serverId === serverId);
+                  updateConfig({
+                    serverId,
+                    toolName,
+                    name: tool?.name || toolName,
+                    description: tool?.description || "",
+                  });
+                }}
               >
-                <option value="echo">Echo</option>
-                <option value="word_count">Word Count</option>
-                <option value="uppercase">Uppercase</option>
+                <option value="">Select a tool...</option>
+                {mcpServers.length === 0 && (
+                  <option disabled>No servers connected</option>
+                )}
+                {mcpServers.map(server => {
+                  const serverTools = mcpTools.filter(t => t.serverId === server.id);
+                  if (!serverTools.length) return null;
+                  return (
+                    <optgroup key={server.id} label={`${server.label} ${server.connected ? "✓" : "(offline)"}`}>
+                      {serverTools.map(tool => (
+                        <option key={`${server.id}::${tool.name}`} value={`${server.id}::${tool.name}`}>
+                          {tool.name}
+                        </option>
+                      ))}
+                    </optgroup>
+                  );
+                })}
               </select>
             </label>
+            {node.config.description && (
+              <div className="provider-note neutral">{node.config.description}</div>
+            )}
+            {node.config.toolName && (
+              <div className="provider-note success">
+                Server: <strong>{node.config.serverId}</strong> · Tool: <strong>{node.config.toolName}</strong>
+              </div>
+            )}
           </>
         )}
 
@@ -1787,14 +1859,6 @@ function StatusBadge({ status }) {
   return <span className={`status-badge ${status}`}>{labels[status] || status}</span>;
 }
 
-function IconButton({ icon: Icon, label, onClick, variant = "secondary" }) {
-  return (
-    <button className={variant} type="button" onClick={onClick}>
-      <Icon size={16} />
-      {label}
-    </button>
-  );
-}
 
 function selectionLabel(node, edge) {
   if (node) {
