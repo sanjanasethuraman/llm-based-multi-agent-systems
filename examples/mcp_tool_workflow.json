@@ -36,6 +36,7 @@
           "model": "llama3.2:1b",
           "baseUrl": "http://127.0.0.1:11434",
           "temperature": 0.2,
+          "think": false,
           "systemPrompt": "Write a concise demo summary using the MCP tool result."
         }
       },

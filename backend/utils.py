@@ -101,10 +101,8 @@ def preview_text(text, limit=220):
         return cleaned
     return cleaned[:limit] + "..."
 
-def get_available_tools(node_id, edges, nodes):
-    """Return a list of tool metadata for tool nodes directly outgoing from `node_id`.
-    Each entry contains `nodeId`, `label`, `toolType`, and `tool` (implementation or None).
-    """
+def get_available_tools(node_id, edges, nodes) -> list[dict]:
+    """Return a list of server_id & tool_name for tool nodes directly outgoing from `node_id`."""
     tools = []
     for edge in edges:
         if edge["source"] != node_id:
@@ -119,14 +117,10 @@ def get_available_tools(node_id, edges, nodes):
                     break
         if not target_node or target_node.get("type") != "tool":
             continue
-        cfg = target_node.get("config", {})
-        tool_type = cfg.get("toolType")
-        tool_obj = get_tool(tool_type) if tool_type else None
+        config = target_node.get("config", {})
         tools.append({
-            "nodeId": target_node.get("id"),
-            "label": target_node.get("label"),
-            "toolType": tool_type,
-            "tool": tool_obj,
+            "server_id": config.get("serverId", "internal"),
+            "tool_name": config.get("toolName"),
         })
     return tools
 

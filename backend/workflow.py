@@ -1,11 +1,12 @@
 import json
 import time
+import inspect
 from collections import defaultdict
 from pprint import pformat
 
 from backend.nodes import get_node_executor
 from backend.utils import topological_order, preview_text
-
+from backend.mcp_registry import McpClientRegistry
 
 VALID_NODE_TYPES = {"input", "agent", "tool", "output", "retriever", "vector_db", "mcp_tool"}
 VALID_AGENT_PROVIDERS = {"mock", "ollama", "huggingface", "api"}
@@ -128,7 +129,7 @@ def validate_workflow(workflow):
     return {"valid": not errors, "errors": errors, "warnings": warnings}
 
 
-def run_workflow(workflow):
+async def run_workflow(workflow, mcp_registry: McpClientRegistry):
     validation = validate_workflow(workflow)
     if validation["errors"]:
         raise ValueError("Workflow validation failed: " + " ".join(validation["errors"]))
@@ -160,12 +161,14 @@ def run_workflow(workflow):
         "stats": stats,
         "retrievals": retrievals,
         "mcpCalls": [],
+        "mcp_registry": mcp_registry,
         }
 
     for node_id in order:
         node_started = time.perf_counter()
         node = nodes[node_id]
         executor = get_node_executor(node.get("type"))
+
         if executor is None:
             node_results[node_id] = {
                 "status": "error",
@@ -177,7 +180,10 @@ def run_workflow(workflow):
             }
             continue
         else:
-            result, metadata = executor.execute(node, context)
+            if inspect.iscoroutinefunction(executor.execute):
+                result, metadata = await executor.execute(node, context)
+            else:
+                result, metadata = executor.execute(node, context)
             status = metadata.get("status", "completed")
             message = metadata.get("message", "")
             stats.update(metadata.get("stats", {}))

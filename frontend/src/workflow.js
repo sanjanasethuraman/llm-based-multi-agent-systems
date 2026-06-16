@@ -33,6 +33,7 @@ export const DEFAULT_WORKFLOW = {
         huggingFaceToken: "",
         maxNewTokens: 512,
         temperature: 0.2,
+        think: false,
         systemPrompt: "Break the user's request into a short implementation plan.",
       },
     },
@@ -49,6 +50,7 @@ export const DEFAULT_WORKFLOW = {
         huggingFaceToken: "",
         maxNewTokens: 512,
         temperature: 0.4,
+        think: false,
         systemPrompt: "Write a concise final response based on the plan.",
       },
     },
@@ -86,6 +88,7 @@ const DEFAULT_CONFIGS = {
     huggingFaceToken: "",
     maxNewTokens: 512,
     temperature: 0.2,
+    think: false,
     systemPrompt: "You are a helpful assistant.",
   },
   retriever: {
