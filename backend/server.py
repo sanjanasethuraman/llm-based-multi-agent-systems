@@ -3,9 +3,14 @@ import errno
 import json
 import mimetypes
 import os
+import sys
 from pathlib import Path
 import time
 from urllib.parse import parse_qs, urlparse
+
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 try:
     from app_database import (
