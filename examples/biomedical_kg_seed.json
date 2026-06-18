@@ -1,0 +1,231 @@
+{
+  "collection": "biomedical_kg_demo",
+  "label": "Biomedical KG Demo Seed",
+  "description": "Curated biomedical research graph for demonstrating Neo4j-backed Graph RAG. This is not medical advice.",
+  "entities": [
+    {
+      "id": "disease:migraine",
+      "type": "Disease",
+      "name": "Migraine",
+      "description": "Neurological disorder commonly studied through CGRP-related mechanisms."
+    },
+    {
+      "id": "drug:erenumab",
+      "type": "Drug",
+      "name": "Erenumab",
+      "description": "Monoclonal antibody investigated for migraine prevention."
+    },
+    {
+      "id": "gene:cgrp",
+      "type": "Gene",
+      "name": "CGRP",
+      "description": "Calcitonin gene-related peptide, a migraine-relevant signaling molecule."
+    },
+    {
+      "id": "pathway:cgrp-signaling",
+      "type": "Pathway",
+      "name": "CGRP signaling",
+      "description": "Signaling pathway implicated in migraine pathophysiology."
+    },
+    {
+      "id": "trial:nct02066415",
+      "type": "ClinicalTrial",
+      "name": "NCT02066415",
+      "description": "Clinical trial evidence node for erenumab and migraine."
+    },
+    {
+      "id": "publication:pubmed-migraine-cgrp-review",
+      "type": "Publication",
+      "name": "Migraine CGRP review",
+      "description": "Review-style evidence node summarizing CGRP and migraine links."
+    },
+    {
+      "id": "disease:breast-cancer",
+      "type": "Disease",
+      "name": "Breast cancer",
+      "description": "Cancer domain node used for cross-disease graph examples."
+    },
+    {
+      "id": "drug:trastuzumab",
+      "type": "Drug",
+      "name": "Trastuzumab",
+      "description": "HER2-targeted therapy used as a graph relationship example."
+    },
+    {
+      "id": "gene:erbb2",
+      "type": "Gene",
+      "name": "ERBB2",
+      "description": "Gene encoding HER2."
+    },
+    {
+      "id": "pathway:her2-signaling",
+      "type": "Pathway",
+      "name": "HER2 signaling",
+      "description": "Growth factor signaling pathway relevant to HER2-positive breast cancer."
+    },
+    {
+      "id": "disease:type-2-diabetes",
+      "type": "Disease",
+      "name": "Type 2 diabetes",
+      "description": "Metabolic disease node for drug-gene-pathway traversal examples."
+    },
+    {
+      "id": "drug:metformin",
+      "type": "Drug",
+      "name": "Metformin",
+      "description": "Common diabetes medication used in the KG demo."
+    },
+    {
+      "id": "pathway:insulin-signaling",
+      "type": "Pathway",
+      "name": "Insulin signaling",
+      "description": "Metabolic pathway relevant to glucose regulation."
+    },
+    {
+      "id": "gene:ins",
+      "type": "Gene",
+      "name": "INS",
+      "description": "Insulin gene."
+    }
+  ],
+  "relationships": [
+    {
+      "source": "drug:erenumab",
+      "target": "gene:cgrp",
+      "type": "TARGETS",
+      "evidence": "Erenumab is represented as targeting the CGRP receptor pathway in this demo graph.",
+      "evidenceChunkId": "evidence:migraine-cgrp"
+    },
+    {
+      "source": "gene:cgrp",
+      "target": "pathway:cgrp-signaling",
+      "type": "PARTICIPATES_IN",
+      "evidence": "CGRP participates in CGRP signaling.",
+      "evidenceChunkId": "evidence:migraine-cgrp"
+    },
+    {
+      "source": "pathway:cgrp-signaling",
+      "target": "disease:migraine",
+      "type": "ASSOCIATED_WITH",
+      "evidence": "CGRP signaling is associated with migraine mechanisms.",
+      "evidenceChunkId": "evidence:migraine-cgrp"
+    },
+    {
+      "source": "trial:nct02066415",
+      "target": "drug:erenumab",
+      "type": "INVESTIGATED",
+      "evidence": "The clinical trial node is linked to erenumab.",
+      "evidenceChunkId": "evidence:migraine-trial"
+    },
+    {
+      "source": "trial:nct02066415",
+      "target": "disease:migraine",
+      "type": "INVESTIGATED_FOR",
+      "evidence": "The clinical trial node is linked to migraine.",
+      "evidenceChunkId": "evidence:migraine-trial"
+    },
+    {
+      "source": "publication:pubmed-migraine-cgrp-review",
+      "target": "pathway:cgrp-signaling",
+      "type": "HAS_EVIDENCE",
+      "evidence": "The publication node supports the CGRP signaling relationship.",
+      "evidenceChunkId": "evidence:migraine-cgrp"
+    },
+    {
+      "source": "drug:trastuzumab",
+      "target": "gene:erbb2",
+      "type": "TARGETS",
+      "evidence": "Trastuzumab targets HER2/ERBB2 biology.",
+      "evidenceChunkId": "evidence:breast-her2"
+    },
+    {
+      "source": "gene:erbb2",
+      "target": "pathway:her2-signaling",
+      "type": "PARTICIPATES_IN",
+      "evidence": "ERBB2 participates in HER2 signaling.",
+      "evidenceChunkId": "evidence:breast-her2"
+    },
+    {
+      "source": "pathway:her2-signaling",
+      "target": "disease:breast-cancer",
+      "type": "ASSOCIATED_WITH",
+      "evidence": "HER2 signaling is associated with HER2-positive breast cancer.",
+      "evidenceChunkId": "evidence:breast-her2"
+    },
+    {
+      "source": "drug:metformin",
+      "target": "pathway:insulin-signaling",
+      "type": "MODULATES",
+      "evidence": "Metformin is linked to metabolic regulation in this demo graph.",
+      "evidenceChunkId": "evidence:diabetes-metformin"
+    },
+    {
+      "source": "gene:ins",
+      "target": "pathway:insulin-signaling",
+      "type": "PARTICIPATES_IN",
+      "evidence": "INS participates in insulin signaling.",
+      "evidenceChunkId": "evidence:diabetes-metformin"
+    },
+    {
+      "source": "pathway:insulin-signaling",
+      "target": "disease:type-2-diabetes",
+      "type": "ASSOCIATED_WITH",
+      "evidence": "Insulin signaling is associated with type 2 diabetes mechanisms.",
+      "evidenceChunkId": "evidence:diabetes-metformin"
+    }
+  ],
+  "documents": [
+    {
+      "id": "document:migraine-cgrp",
+      "chunkId": "evidence:migraine-cgrp",
+      "title": "Migraine and CGRP mechanism note",
+      "source": "curated-biomedical-demo",
+      "entityIds": [
+        "disease:migraine",
+        "drug:erenumab",
+        "gene:cgrp",
+        "pathway:cgrp-signaling",
+        "publication:pubmed-migraine-cgrp-review"
+      ],
+      "text": "Migraine research frequently connects CGRP signaling to disease mechanisms. Erenumab is represented in this demo as a drug targeting the CGRP-related pathway, while CGRP participates in the CGRP signaling pathway associated with migraine."
+    },
+    {
+      "id": "document:migraine-trial",
+      "chunkId": "evidence:migraine-trial",
+      "title": "Migraine clinical trial note",
+      "source": "curated-biomedical-demo",
+      "entityIds": [
+        "trial:nct02066415",
+        "drug:erenumab",
+        "disease:migraine"
+      ],
+      "text": "The clinical trial node NCT02066415 is linked to erenumab and migraine in this demo graph, allowing traversal from a disease to an investigated drug through trial evidence."
+    },
+    {
+      "id": "document:breast-her2",
+      "chunkId": "evidence:breast-her2",
+      "title": "Breast cancer HER2 mechanism note",
+      "source": "curated-biomedical-demo",
+      "entityIds": [
+        "disease:breast-cancer",
+        "drug:trastuzumab",
+        "gene:erbb2",
+        "pathway:her2-signaling"
+      ],
+      "text": "Trastuzumab targets HER2 biology represented by ERBB2. ERBB2 participates in HER2 signaling, and HER2 signaling is associated with HER2-positive breast cancer."
+    },
+    {
+      "id": "document:diabetes-metformin",
+      "chunkId": "evidence:diabetes-metformin",
+      "title": "Type 2 diabetes metformin pathway note",
+      "source": "curated-biomedical-demo",
+      "entityIds": [
+        "disease:type-2-diabetes",
+        "drug:metformin",
+        "gene:ins",
+        "pathway:insulin-signaling"
+      ],
+      "text": "Metformin is connected to metabolic regulation in this demo graph. INS participates in insulin signaling, and insulin signaling is associated with type 2 diabetes mechanisms."
+    }
+  ]
+}

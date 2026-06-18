@@ -17,20 +17,28 @@ class RetrieverNodeExecutor(NodeExecutor):
 
         matches = retrieval.get("matches", [])
         result = retrieval.get("context", "")
+        graph_evidence = retrieval.get("graphEvidence") or {}
         context["stats"]["retrieverCalls"] += 1
+        if graph_evidence:
+            context["stats"]["graphEntities"] = context["stats"].get("graphEntities", 0) + len(graph_evidence.get("entities", []))
+            context["stats"]["graphRelationships"] = context["stats"].get("graphRelationships", 0) + len(graph_evidence.get("relationships", []))
         context["retrievals"].append({
             "nodeId": node["id"],
             "nodeType": node["type"],
             "nodeName": config.get("name") or node.get("label") or node["id"],
             "stage": "retriever",
             "collection": merged_config.get("collection"),
+            "retrievalMode": retrieval.get("retrievalMode"),
             "vectorBackend": retrieval.get("vectorBackend"),
             "embeddingBackend": retrieval.get("embeddingBackend"),
+            "graphBackend": retrieval.get("graphBackend"),
+            "graphEvidence": graph_evidence,
             "context": retrieval.get("context"),
             "matches": matches,
         })
+        mode = retrieval.get("retrievalMode") or "vector"
         message = (
-            f"Retriever '{config.get('name', 'unnamed')}' used "
-            f"{retrieval.get('vectorBackend')} and found {len(matches)} matches."
+            f"Retriever '{config.get('name', 'unnamed')}' used {mode} retrieval "
+            f"and found {len(matches)} matches."
         )
         return result, {"status": "completed", "message": message, "matches": matches}

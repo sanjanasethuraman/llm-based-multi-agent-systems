@@ -17,6 +17,8 @@ React + Python prototype for visually composing, running, and inspecting LLM-bas
 - Show retrieval chunk usage on the workflow graph with retriever node badges and edge labels.
 - Add retrieval-aware workflow metrics: retrieved chunks, retriever nodes, collections retrieved, and hit retrievals.
 - Show retriever execution results even when zero matches are returned.
+- Run Neo4j-backed Graph RAG retrieval modes: vector, graph, and hybrid.
+- Seed a curated biomedical knowledge graph demo with diseases, drugs, genes, pathways, trials, publications, and evidence chunks.
 - Switch agents between mock, Ollama, and placeholder API providers.
 - Surface Ollama availability from the configured local provider URL.
 - Load example workflows for demos and evaluation.
@@ -30,6 +32,7 @@ React + Python prototype for visually composing, running, and inspecting LLM-bas
     - `vector_db/` optional vector DB connectors / adapters
 - `frontend/` contains the Vite/React app.
 - `examples/` contains presentation/demo workflows.
+- `docker-compose.neo4j.yml` starts the optional Neo4j backend for Graph RAG.
 - `scripts/demo.sh` installs missing frontend dependencies, builds React, and starts the backend server.
 - `data/` is runtime-only local state and is ignored by Git.
 - `generated/` is runtime-only Python export output and is ignored by Git.
@@ -103,6 +106,38 @@ ollama pull nomic-embed-text
 ```
 
 If Ollama embeddings are unavailable, ingestion falls back to deterministic local hash embeddings so the prototype still runs.
+
+## Optional Neo4j Graph RAG Support
+
+Graph RAG uses Neo4j as an actual property graph backend. The default app settings expect:
+
+```bash
+NEO4J_URI=bolt://127.0.0.1:7687
+NEO4J_USER=neo4j
+NEO4J_PASSWORD=visualmas
+NEO4J_DATABASE=neo4j
+```
+
+Start Neo4j with Docker:
+
+```bash
+docker compose -f docker-compose.neo4j.yml up -d
+```
+
+Then start the app and use the `Documents / RAG Ingestion` panel:
+
+1. Check `Neo4j Graph RAG` status.
+2. Click `Seed Biomedical KG`.
+3. Load the `Biomedical Graph RAG` example workflow.
+4. Run it with the retriever in `Graph` or `Hybrid` mode.
+
+Retriever nodes support:
+
+- `vector`: current vector RAG retrieval.
+- `graph`: Neo4j entity/relationship traversal only.
+- `hybrid`: vector retrieval plus Neo4j graph evidence.
+
+Open Neo4j Browser at `http://127.0.0.1:7474` and log in with `neo4j` / `visualmas` to inspect the generated graph.
 
 ## Optional Hugging Face Support
 

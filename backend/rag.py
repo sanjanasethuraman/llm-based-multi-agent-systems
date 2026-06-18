@@ -10,8 +10,10 @@ from urllib import error, request
 
 try:
     from app_database import save_document_metadata
+    from graph_rag import graph_store_status, retrieve_graph_context, upsert_graph_chunks
 except ModuleNotFoundError:
     from backend.app_database import save_document_metadata
+    from backend.graph_rag import graph_store_status, retrieve_graph_context, upsert_graph_chunks
 
 
 class HtmlTextExtractor(HTMLParser):
@@ -377,12 +379,17 @@ def ingest_documents(payload):
     else:
         upsert_fallback(collection, chunks, embeddings)
 
+    graph_result = {"status": "disabled"}
+    if payload.get("graphEnabled", True):
+        graph_result = upsert_graph_chunks(collection, chunks, payload)
+
     return {
         "status": "ingested",
         "collection": collection,
         "chunks": len(chunks),
         "vectorBackend": vector_backend,
         "embeddingBackend": embedding_backend,
+        "graph": graph_result,
         "store": vector_store_status(),
     }
 
@@ -392,16 +399,67 @@ def retrieve_context(config, query):
     embedding_model = config.get("embeddingModel") or DEFAULT_EMBEDDING_MODEL
     base_url = config.get("baseUrl") or DEFAULT_BASE_URL
     vector_backend = resolve_vector_backend(config.get("vectorBackend"))
-    require_backend_available(vector_backend)
     top_k = int(config.get("topK") or 3)
+    retrieval_mode = (config.get("retrievalMode") or "vector").lower()
+    if retrieval_mode not in {"vector", "graph", "hybrid"}:
+        retrieval_mode = "vector"
+    if retrieval_mode != "graph":
+        require_backend_available(vector_backend)
+    graph_top_k = int(config.get("graphTopK") or top_k)
+    graph_hops = int(config.get("graphHops") or 1)
 
     if not query.strip():
         return {
             "context": "Retriever received an empty query.",
             "matches": [],
             "vectorBackend": vector_backend,
+            "retrievalMode": retrieval_mode,
         }
 
+    if retrieval_mode == "graph":
+        graph_retrieval = retrieve_graph_context(collection, query, graph_top_k, graph_hops, config)
+        return {
+            **graph_retrieval,
+            "retrievalMode": "graph",
+            "vectorBackend": vector_backend,
+            "embeddingBackend": None,
+        }
+
+    vector_retrieval = retrieve_vector_context(
+        collection,
+        query,
+        embedding_model,
+        base_url,
+        vector_backend,
+        top_k,
+    )
+    if retrieval_mode == "hybrid":
+        graph_retrieval = retrieve_graph_context(collection, query, graph_top_k, graph_hops, config)
+        combined_matches = merge_retrieval_matches(
+            vector_retrieval.get("matches", []),
+            graph_retrieval.get("matches", []),
+        )
+        context_parts = [
+            part for part in [
+                vector_retrieval.get("context"),
+                graph_retrieval.get("context"),
+            ]
+            if part
+        ]
+        return {
+            "context": "\n\n---\n\n".join(context_parts) or "No hybrid retrieval context found.",
+            "matches": combined_matches,
+            "vectorBackend": vector_backend,
+            "embeddingBackend": vector_retrieval.get("embeddingBackend"),
+            "retrievalMode": "hybrid",
+            "graphBackend": graph_retrieval.get("graphBackend"),
+            "graphEvidence": graph_retrieval.get("graphEvidence"),
+        }
+
+    return {**vector_retrieval, "retrievalMode": "vector"}
+
+
+def retrieve_vector_context(collection, query, embedding_model, base_url, vector_backend, top_k):
     query_embedding, embedding_backend = embed_texts([query], embedding_model, base_url)
     if vector_backend == "chroma":
         matches = query_chroma(collection, query_embedding[0], top_k)
@@ -435,6 +493,21 @@ def retrieve_context(config, query):
         "vectorBackend": vector_backend,
         "embeddingBackend": embedding_backend,
     }
+
+
+def merge_retrieval_matches(vector_matches, graph_matches):
+    merged = []
+    seen = set()
+    for stage, matches in (("vector", vector_matches), ("graph", graph_matches)):
+        for match in matches:
+            metadata = dict(match.get("metadata", {}))
+            match_id = metadata.get("id") or stable_id(stage, metadata.get("source"), metadata.get("title"), match.get("text"))
+            if match_id in seen:
+                continue
+            seen.add(match_id)
+            metadata.setdefault("stage", stage)
+            merged.append({**match, "metadata": metadata})
+    return merged
 
 
 def chunk_text(text, chunk_size, overlap):

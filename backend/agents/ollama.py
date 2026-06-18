@@ -3,13 +3,12 @@ import json
 import asyncio
 from urllib import request, error
 from ollama import chat, ChatResponse
-from backend.mcp_registry import McpClientRegistry
 
 class OllamaProvider(AgentProvider):
     name = "OllamaProvider"
     MAX_ITERATIONS = 10
 
-    async def run(self, config, incoming, mcp_registry: McpClientRegistry, available_tools: list[dict]):
+    async def run(self, config, incoming, mcp_registry, available_tools: list[dict]):
         tool_calls = 0
         model = config.get("model", "llama3.2:1b")
         messages = [{"role": "system", "content": config.get("systemPrompt", "You are a helpful assistant.")}] 
