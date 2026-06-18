@@ -1,7 +1,6 @@
 from .base import NodeExecutor
 from backend.utils import collect_incoming_map, get_available_tools
 from backend.agents import get_agent_provider
-from backend.agents.tool_client import McpToolClient
 
 class AgentNodeExecutor(NodeExecutor):
     node_type = "agent"

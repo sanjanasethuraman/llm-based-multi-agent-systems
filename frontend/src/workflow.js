@@ -10,6 +10,7 @@ export const NODE_TYPES = {
 
 const VALID_VECTOR_BACKENDS = new Set(["auto", "chroma", "local-json-fallback", "faiss"]);
 const VALID_AGENT_PROVIDERS = new Set(["mock", "ollama", "huggingface", "api"]);
+const VALID_RETRIEVAL_MODES = new Set(["vector", "graph", "hybrid"]);
 
 export const DEFAULT_WORKFLOW = {
   nodes: [
@@ -93,10 +94,13 @@ const DEFAULT_CONFIGS = {
   },
   retriever: {
     collection: "course_docs",
+    retrievalMode: "vector",
     vectorBackend: "auto",
     embeddingModel: "nomic-embed-text",
     baseUrl: "http://127.0.0.1:11434",
     topK: 3,
+    graphHops: 1,
+    graphTopK: 5,
   },
   vector_db: {
     collection: "course_docs",
@@ -199,6 +203,13 @@ export function validateWorkflow(workflow) {
       warnings.push(`Node ${node.label || node.id} is disconnected.`);
     }
     if (node.type === "retriever") {
+      const retrievalMode = node.config?.retrievalMode || "vector";
+      if (!VALID_RETRIEVAL_MODES.has(retrievalMode)) {
+        errors.push(`Retriever ${node.label || node.id} has unsupported retrieval mode: ${retrievalMode}.`);
+      }
+      if (["graph", "hybrid"].includes(retrievalMode)) {
+        warnings.push(`Retriever ${node.label || node.id} uses Neo4j Graph RAG; make sure Neo4j is running and seeded.`);
+      }
       const queryEdges = incoming.filter((edge) => nodeMap.get(edge.source)?.type !== "vector_db");
       if (!queryEdges.length) {
         warnings.push(`Retriever ${node.label || node.id} has no query input.`);

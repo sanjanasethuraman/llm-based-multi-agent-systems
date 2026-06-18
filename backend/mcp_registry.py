@@ -1,8 +1,7 @@
-from backend.agents.tool_client import McpToolClient
 from dataclasses import dataclass, field
-import asyncio
 import json
 import time
+from typing import Any
 
 MOCK_MCP_TOOLS = {
     "demo.weather": {
@@ -40,7 +39,7 @@ class McpServerConfig:
 class McpClientRegistry:
     def __init__(self):
         self._configs: dict[str, McpServerConfig] = {}
-        self._clients: dict[str, McpToolClient] = {}
+        self._clients: dict[str, Any] = {}
         self._loop = None
 
     def set_loop(self, loop):
@@ -57,6 +56,8 @@ class McpClientRegistry:
         self._configs.pop(server_id, None)
 
     async def connect(self, server_id: str):
+        from backend.agents.tool_client import McpToolClient
+
         config = self._configs[server_id]
         client = McpToolClient.from_config(config)
         await client.__aenter__()
@@ -66,10 +67,10 @@ class McpClientRegistry:
         for server_id in self._configs:
             await self.connect(server_id)
 
-    def get_client(self, server_id: str) -> McpToolClient:
+    def get_client(self, server_id: str):
         return self._clients.get(server_id)
 
-    def all_clients(self) -> dict[str, McpToolClient]:
+    def all_clients(self) -> dict[str, Any]:
         return dict(self._clients)
 
     def list_servers(self) -> list[dict]:
@@ -145,5 +146,4 @@ def normalize_arguments(arguments):
             raise ValueError("MCP arguments must be a JSON object.")
         return parsed
     raise ValueError("MCP arguments must be a JSON object.")
-
 

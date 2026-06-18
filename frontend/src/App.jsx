@@ -62,6 +62,11 @@ const vectorBackendOptions = [
   { value: "local-json-fallback", label: "Local JSON" },
   { value: "faiss", label: "FAISS" },
 ];
+const retrievalModeOptions = [
+  { value: "vector", label: "Vector" },
+  { value: "graph", label: "Graph" },
+  { value: "hybrid", label: "Hybrid" },
+];
 
 export default function App() {
   return (
@@ -90,10 +95,12 @@ function WorkflowApp() {
   const [recentDocuments, setRecentDocuments] = useState([]);
   const [ollamaStatus, setOllamaStatus] = useState(null);
   const [huggingFaceStatus, setHuggingFaceStatus] = useState(null);
+  const [graphStatus, setGraphStatus] = useState(null);
   const [ingestStatus, setIngestStatus] = useState("No document ingested yet.");
   const [ragForm, setRagForm] = useState({
     collection: "course_docs",
     vectorBackend: "auto",
+    graphEnabled: true,
     title: "Project Notes",
     embeddingModel: "nomic-embed-text",
     baseUrl: "http://127.0.0.1:11434",
@@ -174,6 +181,7 @@ function WorkflowApp() {
     refreshExamples();
     refreshCollections();
     refreshMcpTools();
+    refreshGraphStatus();
   }, []);
 
   useEffect(() => {
@@ -502,6 +510,29 @@ function WorkflowApp() {
     }
   }
 
+  async function refreshGraphStatus() {
+    try {
+      const result = await getJson("/api/graph-rag/status");
+      setGraphStatus(result);
+    } catch (error) {
+      setGraphStatus({ connected: false, message: error.message });
+    }
+  }
+
+  async function seedBiomedicalGraph() {
+    try {
+      setStatusMessage("Seeding biomedical Neo4j graph...");
+      const result = await postJson("/api/graph-rag/seed-demo", {});
+      setIngestStatus(JSON.stringify(result, null, 2));
+      setStatusMessage(`Seeded ${result.entities} entities and ${result.relationships} relationships into ${result.collection}.`);
+      await refreshGraphStatus();
+      await refreshCollections();
+    } catch (error) {
+      setIngestStatus(error.message);
+      setStatusMessage(error.message);
+    }
+  }
+
   async function refreshMcpTools() {
     try {
       const [toolsResult, serversResult] = await Promise.all([
@@ -585,6 +616,7 @@ function WorkflowApp() {
         ? {
             collection: ragForm.collection,
             vectorBackend: ragForm.vectorBackend,
+            graphEnabled: ragForm.graphEnabled,
             embeddingModel: ragForm.embeddingModel,
             baseUrl: ragForm.baseUrl,
             documents,
@@ -592,6 +624,7 @@ function WorkflowApp() {
         : {
             collection: ragForm.collection,
             vectorBackend: ragForm.vectorBackend,
+            graphEnabled: ragForm.graphEnabled,
             title: ragForm.title,
             source: "manual-ui",
             text: ragForm.text,
@@ -693,9 +726,12 @@ function WorkflowApp() {
         collections={collections}
         recentDocuments={recentDocuments}
         form={ragForm}
+        graphStatus={graphStatus}
         ingestStatus={ingestStatus}
         ollamaStatus={ollamaStatus}
         onFormChange={setRagForm}
+        onRefreshGraphStatus={refreshGraphStatus}
+        onSeedBiomedicalGraph={seedBiomedicalGraph}
         onIngest={ingestDocuments}
         onRefreshCollections={refreshCollections}
       />
@@ -916,6 +952,49 @@ function ConfigPanel({ node, validation, huggingFaceStatus, mcpTools, mcpServers
                 onChange={(event) => updateConfig({ collection: event.target.value })}
               />
             </label>
+            {node.type === "retriever" && (
+              <>
+                <label>
+                  Retrieval Mode
+                  <select
+                    value={node.config.retrievalMode || "vector"}
+                    onChange={(event) => updateConfig({ retrievalMode: event.target.value })}
+                  >
+                    {retrievalModeOptions.map((mode) => (
+                      <option key={mode.value} value={mode.value}>
+                        {mode.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                {["graph", "hybrid"].includes(node.config.retrievalMode || "vector") && (
+                  <>
+                    <label>
+                      Graph Hops
+                      <input
+                        max="3"
+                        min="1"
+                        step="1"
+                        type="number"
+                        value={node.config.graphHops || 1}
+                        onChange={(event) => updateConfig({ graphHops: Number(event.target.value) })}
+                      />
+                    </label>
+                    <label>
+                      Graph Top K
+                      <input
+                        max="20"
+                        min="1"
+                        step="1"
+                        type="number"
+                        value={node.config.graphTopK || 5}
+                        onChange={(event) => updateConfig({ graphTopK: Number(event.target.value) })}
+                      />
+                    </label>
+                  </>
+                )}
+              </>
+            )}
             <label>
               Vector Backend
               <select
@@ -1144,9 +1223,12 @@ function RagPanel({
   collections,
   recentDocuments,
   form,
+  graphStatus,
   ingestStatus,
   ollamaStatus,
   onFormChange,
+  onRefreshGraphStatus,
+  onSeedBiomedicalGraph,
   onIngest,
   onRefreshCollections,
 }) {
@@ -1156,7 +1238,7 @@ function RagPanel({
       <div className="section-header">
         <div>
           <h2>Documents / RAG Ingestion</h2>
-          <p>Upload text-like files into a collection, then connect a retriever node to use them.</p>
+          <p>Upload files into vector RAG and optionally index them into the Neo4j graph.</p>
         </div>
         <IconButton icon={RefreshCcw} label="Refresh" onClick={onRefreshCollections} />
       </div>
@@ -1181,6 +1263,13 @@ function RagPanel({
           </select>
         </label>
         <label>
+          Graph Indexing
+          <select value={String(form.graphEnabled)} onChange={(event) => updateField("graphEnabled", event.target.value === "true")}>
+            <option value="true">Neo4j graph + vector</option>
+            <option value="false">Vector only</option>
+          </select>
+        </label>
+        <label>
           Embedding Model
           <input
             value={form.embeddingModel}
@@ -1195,6 +1284,17 @@ function RagPanel({
 
       <div className="rag-provider-row">
         <ProviderNote provider="ollama" ollamaStatus={ollamaStatus} />
+      </div>
+
+      <div className={`provider-note ${graphStatus?.connected ? "success" : "warning"}`}>
+        <strong>Neo4j Graph RAG:</strong>{" "}
+        {graphStatus
+          ? `${graphStatus.connected ? "connected" : "not connected"} at ${graphStatus.uri || "bolt://127.0.0.1:7687"}. ${graphStatus.message || ""}`
+          : "Checking graph backend..."}
+        <div className="inline-actions">
+          <IconButton icon={RefreshCcw} label="Graph Status" onClick={onRefreshGraphStatus} />
+          <IconButton icon={Upload} label="Seed Biomedical KG" variant="primary" onClick={onSeedBiomedicalGraph} />
+        </div>
       </div>
 
       <label className="file-upload">
@@ -1791,6 +1891,15 @@ function RetrievalPanel({ retrievals }) {
 
   const retrievedChunkCount = matches.filter((match) => !match.placeholder).length;
   const hasRetrieverRun = retrievals.length > 0;
+  const graphEvidence = retrievals
+    .map((retrieval) => ({
+      nodeId: retrieval.nodeId,
+      nodeName: retrieval.nodeName,
+      collection: retrieval.collection,
+      retrievalMode: retrieval.retrievalMode,
+      evidence: retrieval.graphEvidence,
+    }))
+    .filter((item) => item.evidence && (item.evidence.entities?.length || item.evidence.relationships?.length || item.evidence.message));
 
   return (
     <section className="retrieval-panel">
@@ -1819,6 +1928,37 @@ function RetrievalPanel({ retrievals }) {
           </article>
         ))}
       </div>
+      {graphEvidence.length > 0 && (
+        <div className="graph-evidence">
+          <h3>Graph Evidence</h3>
+          {graphEvidence.map((item) => (
+            <article key={`${item.nodeId}-${item.collection}-graph`}>
+              <div>
+                <strong>{item.nodeName || item.nodeId}</strong>
+                <span>{item.retrievalMode || "graph"}</span>
+                <span>{item.collection}</span>
+                <span>{item.evidence.status || "available"}</span>
+              </div>
+              {item.evidence.message && <p>{item.evidence.message}</p>}
+              {item.evidence.entities?.length ? (
+                <p>
+                  <strong>Entities:</strong>{" "}
+                  {item.evidence.entities.slice(0, 12).map((entity) => `${entity.type || "Entity"}:${entity.name}`).join(", ")}
+                </p>
+              ) : null}
+              {item.evidence.relationships?.length ? (
+                <ul>
+                  {item.evidence.relationships.slice(0, 10).map((relationship, index) => (
+                    <li key={`${relationship.source}-${relationship.target}-${relationship.type}-${index}`}>
+                      {relationship.sourceName} -[{relationship.type}]-&gt; {relationship.targetName}
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+            </article>
+          ))}
+        </div>
+      )}
     </section>
   );
 }

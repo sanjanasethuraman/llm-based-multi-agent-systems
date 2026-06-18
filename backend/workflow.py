@@ -11,6 +11,7 @@ from backend.mcp_registry import McpClientRegistry
 VALID_NODE_TYPES = {"input", "agent", "tool", "output", "retriever", "vector_db", "mcp_tool"}
 VALID_AGENT_PROVIDERS = {"mock", "ollama", "huggingface", "api"}
 VALID_VECTOR_BACKENDS = {"auto", "chroma", "local-json-fallback", "faiss"}
+VALID_RETRIEVAL_MODES = {"vector", "graph", "hybrid"}
 
 
 def validate_workflow(workflow):
@@ -85,6 +86,14 @@ def validate_workflow(workflow):
                 except Exception as exc:
                     errors.append(f"MCP tool node {node_id} has invalid arguments JSON: {exc}.")
         if node_type == "retriever":
+            retrieval_mode = config.get("retrievalMode", "vector")
+            if retrieval_mode not in VALID_RETRIEVAL_MODES:
+                errors.append(f"Retriever node {node_id} has unsupported retrieval mode: {retrieval_mode}.")
+            if retrieval_mode in {"graph", "hybrid"}:
+                warnings.append(
+                    f"Retriever node {node_id} uses Neo4j Graph RAG; ensure Neo4j is running "
+                    "and the biomedical demo graph or ingested graph index exists."
+                )
             query_edges = [
                 edge for edge in raw_edges
                 if edge.get("target") == node_id and nodes.get(edge.get("source"), {}).get("type") != "vector_db"
