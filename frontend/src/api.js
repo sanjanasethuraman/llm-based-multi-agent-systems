@@ -28,3 +28,7 @@ export async function runWorkflowBatch(workflows, mode = 'sequential') {
     mode,
   });
 }
+
+export async function getVectorDatabaseProviders() {
+  return getJson("/api/vector-db/providers");
+}

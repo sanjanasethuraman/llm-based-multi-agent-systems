@@ -25,7 +25,7 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-import { getJson, postJson, runWorkflowBatch } from "./api.js";
+import { getJson, postJson, runWorkflowBatch, getVectorDatabaseProviders } from "./api.js";
 import {
   calculateNextId,
   createNode,
@@ -66,6 +66,7 @@ const vectorBackendOptions = [
   { value: "local-json-fallback", label: "Local JSON" },
   { value: "faiss", label: "FAISS" },
 ];
+// Note: Dynamic options will be loaded from backend API in WorkflowApp component
 const retrievalModeOptions = [
   { value: "vector", label: "Vector" },
   { value: "graph", label: "Graph" },
@@ -131,6 +132,7 @@ function WorkflowApp() {
     text: "A visual multi-agent system builder lets users create workflows by connecting components such as inputs, agents, tools, retrievers, vector databases, and outputs. RAG adds document ingestion, embeddings, vector search, and retrieved context so agents can answer using project-specific knowledge.",
     files: [],
   });
+  const [dynamicVectorBackendOptions, setDynamicVectorBackendOptions] = useState(vectorBackendOptions);
 
   const validation = useMemo(() => validateWorkflow(workflow), [workflow]);
   const selectedNode = useMemo(
@@ -206,6 +208,7 @@ function WorkflowApp() {
     refreshCollections();
     refreshMcpTools();
     refreshGraphStatus();
+    loadVectorDatabaseProviders();
   }, []);
 
   useEffect(() => {
@@ -402,6 +405,24 @@ function WorkflowApp() {
       setSelectedExample((current) => current || result.examples?.[0]?.name || "");
     } catch (error) {
       setStatusMessage(error.message);
+    }
+  }
+
+  async function loadVectorDatabaseProviders() {
+    try {
+      const result = await getVectorDatabaseProviders();
+      if (result.list && result.list.length > 0) {
+        // Convert provider names to options format
+        const options = result.list.map((provider) => ({
+          value: provider,
+          label: result.providers[provider]?.name || provider.charAt(0).toUpperCase() + provider.slice(1),
+        }));
+        setDynamicVectorBackendOptions(options);
+      }
+    } catch (error) {
+      console.warn("Failed to load vector database providers:", error);
+      // Fallback to default options
+      setDynamicVectorBackendOptions(vectorBackendOptions);
     }
   }
 
@@ -1119,7 +1140,7 @@ function ConfigPanel({ node, validation, huggingFaceStatus, mcpTools, mcpServers
                 value={node.config.vectorBackend || "auto"}
                 onChange={(event) => updateConfig({ vectorBackend: event.target.value })}
               >
-                {vectorBackendOptions.map((backend) => (
+                {dynamicVectorBackendOptions.map((backend) => (
                   <option key={backend.value} value={backend.value}>
                     {backend.label}
                   </option>
@@ -1373,7 +1394,7 @@ function RagPanel({
         <label>
           Vector Backend
           <select value={form.vectorBackend} onChange={(event) => updateField("vectorBackend", event.target.value)}>
-            {vectorBackendOptions.map((backend) => (
+            {dynamicVectorBackendOptions.map((backend) => (
               <option key={backend.value} value={backend.value}>
                 {backend.label}
               </option>
