@@ -1,0 +1,60 @@
+{
+  "label": "Biomedical Graph RAG",
+  "description": "Uses Neo4j graph retrieval over a curated biomedical KG demo collection.",
+  "workflow": {
+    "nodes": [
+      {
+        "id": "input-1",
+        "type": "input",
+        "label": "Biomedical Question",
+        "position": { "x": 60, "y": 205 },
+        "config": {
+          "text": "Which drugs are connected to migraine through CGRP-related mechanisms?"
+        }
+      },
+      {
+        "id": "retriever-1",
+        "type": "retriever",
+        "label": "Neo4j Graph Retriever",
+        "position": { "x": 310, "y": 205 },
+        "config": {
+          "collection": "biomedical_kg_demo",
+          "retrievalMode": "graph",
+          "vectorBackend": "local-json-fallback",
+          "embeddingModel": "nomic-embed-text",
+          "baseUrl": "http://127.0.0.1:11434",
+          "topK": 3,
+          "graphHops": 2,
+          "graphTopK": 8
+        }
+      },
+      {
+        "id": "agent-1",
+        "type": "agent",
+        "label": "Graph Evidence Writer",
+        "position": { "x": 560, "y": 205 },
+        "config": {
+          "name": "Graph Evidence Writer",
+          "provider": "mock",
+          "model": "llama3.2:1b",
+          "baseUrl": "http://127.0.0.1:11434",
+          "temperature": 0.2,
+          "think": false,
+          "systemPrompt": "Answer using the Neo4j graph evidence. Mention entities, relationships, and evidence chunks. State that this is biomedical research exploration, not medical advice."
+        }
+      },
+      {
+        "id": "output-1",
+        "type": "output",
+        "label": "Graph RAG Answer",
+        "position": { "x": 820, "y": 205 },
+        "config": {}
+      }
+    ],
+    "edges": [
+      { "source": "input-1", "target": "retriever-1" },
+      { "source": "retriever-1", "target": "agent-1" },
+      { "source": "agent-1", "target": "output-1" }
+    ]
+  }
+}

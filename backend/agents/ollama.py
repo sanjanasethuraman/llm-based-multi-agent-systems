@@ -1,49 +1,95 @@
 from .base import AgentProvider
 import json
+import asyncio
 from urllib import request, error
+from ollama import chat, ChatResponse
 
 class OllamaProvider(AgentProvider):
     name = "OllamaProvider"
+    MAX_ITERATIONS = 10
 
-    def run(self, config, incoming):        
-        name = config.get("name", "Agent")
+    async def run(self, config, incoming, mcp_registry, available_tools: list[dict]):
+        tool_calls = 0
         model = config.get("model", "llama3.2:1b")
-        base_url = config.get("baseUrl", "http://127.0.0.1:11434").rstrip("/")
-        prompt = self.build_llm_prompt(config, incoming)
-        payload = {
-            "model": model,
-            "prompt": prompt,
-            "stream": False,
-            "options": {"temperature": float(config.get("temperature", 0.2))},
-        }
+        messages = [{"role": "system", "content": config.get("systemPrompt", "You are a helpful assistant.")}] 
 
-        try:
-            data = json.dumps(payload).encode("utf-8")
-            req = request.Request(
-                f"{base_url}/api/generate",
-                data=data,
-                headers={"Content-Type": "application/json"},
-                method="POST",
+        if isinstance(incoming, dict):
+            type = "user"
+            for src, item in incoming.items():
+                text = item.get("text") if isinstance(item, dict) else str(item)
+                label = item.get("label") if isinstance(item, dict) else None
+                ntype = item.get("type") if isinstance(item, dict) else None
+                if ntype == "input":
+                    type = "user"
+                elif ntype == "agent":
+                    type = "assistant"
+                elif ntype == "tool":
+                    type = "tool"
+            messages.append({"role": type, "content": text})
+        else:
+            # fallback for legacy string/list incoming formats
+            if isinstance(incoming, str):
+                messages.append({"role": "user", "content": incoming})
+            else:
+                try:
+                    for part in incoming:
+                        messages.append({"role": "user", "content": str(part)})
+                except Exception:
+                    messages.append({"role": "user", "content": str(incoming)})
+
+        available = {(tool["server_id"], tool["tool_name"]) for tool in available_tools}
+        ollama_tools = []
+        tool_map = {}
+        for server_id, client in mcp_registry.all_clients().items():
+            for tool in await client.list_tools():
+                if (server_id, tool.name) in available:
+                    ollama_tools.append(self._to_ollama_schema(tool))
+                    tool_map[tool.name] = (server_id, client)
+        
+        for _ in range(self.MAX_ITERATIONS):
+            print(f"Calling Ollama model '{model}' with messages: {messages} and tools: {ollama_tools}")
+            response: ChatResponse = chat(
+                model=model,
+                messages=messages,
+                options={"temperature": float(config.get("temperature", 0.2))},
+                tools=ollama_tools,
+                think=config.get("think", False),
+                stream=False,
             )
-            with request.urlopen(req, timeout=90) as response:
-                result = json.loads(response.read().decode("utf-8"))
-            return result.get("response", "").strip() or f"[{name} | ollama] Empty response from {model}."
-        except error.URLError as exc:
-            return (
-                f"[{name} | ollama unavailable]\n"
-                f"Could not reach Ollama at {base_url} for model {model}.\n"
-                "Start Ollama and pull the model, for example: ollama pull llama3.2:1b\n"
-                f"Details: {exc}"
-            )
-        except Exception as exc:
-            return f"[{name} | ollama error]\n{exc}"
-
-
+            messages.append(response.message)
+            if response.message.tool_calls:
+                for tool_call in response.message.tool_calls:
+                    tool_calls += 1
+                    name = tool_call.function.name
+                    print(f"Tool call: {name} with arguments {tool_call.function.arguments}")
+                    if name not in tool_map:
+                        print(f"Tool '{name}' not in available tools, skipping.")
+                        messages.append({
+                            "role": "tool",
+                            "name": name,
+                            "content": json.dumps({"error": f"Tool {name} is not connected to this agent."}),
+                        })
+                        continue
+                    server_id, client = tool_map[name]
+                    result = await client.call_tool(name, tool_call.function.arguments or {})
+                    
+                    messages.append({
+                        "role": "tool",
+                        "name": tool_call.function.name,
+                        "content": json.dumps({"result": result}),
+                    })
+            else:
+                print("No tool calls, breaking out of loop.")
+                break
+        return response.message.content, tool_calls
     
-    def build_llm_prompt(self, config, incoming):
-        system_prompt = config.get("systemPrompt", "You are a helpful assistant.")
-        return (
-            f"System instructions:\n{system_prompt}\n\n"
-            f"Workflow input:\n{incoming}\n\n"
-            "Respond with the result for this agent node."
-        )
+    def _to_ollama_schema(self, tool) -> dict:
+        """Convert an MCP Tool object to Ollama's expected tool schema."""
+        return {
+            "type": "function",
+            "function": {
+                "name": tool.name,
+                "description": tool.description,
+                "parameters": tool.inputSchema,
+            }
+        }

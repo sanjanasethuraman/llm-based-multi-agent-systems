@@ -23,6 +23,7 @@
           "model": "llama3.2:1b",
           "baseUrl": "http://127.0.0.1:11434",
           "temperature": 0.2,
+          "think": false,
           "systemPrompt": "Break the user's request into a short implementation plan."
         }
       },
@@ -37,6 +38,7 @@
           "model": "llama3.2:1b",
           "baseUrl": "http://127.0.0.1:11434",
           "temperature": 0.4,
+          "think": false,
           "systemPrompt": "Write a concise final response based on the plan."
         }
       },

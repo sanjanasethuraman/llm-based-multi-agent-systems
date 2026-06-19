@@ -48,6 +48,7 @@
           "model": "llama3.2:1b",
           "baseUrl": "http://127.0.0.1:11434",
           "temperature": 0.2,
+          "think": false,
           "systemPrompt": "Answer using the retrieved context. If context is missing, say what should be ingested first."
         }
       },

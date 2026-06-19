@@ -10,8 +10,123 @@ from urllib import error, request
 
 try:
     from app_database import save_document_metadata
+    from graph_rag import graph_store_status, retrieve_graph_context, upsert_graph_chunks
 except ModuleNotFoundError:
     from backend.app_database import save_document_metadata
+    from backend.graph_rag import graph_store_status, retrieve_graph_context, upsert_graph_chunks
+
+
+class HtmlTextExtractor(HTMLParser):
+    def __init__(self):
+        super().__init__()
+        self._chunks = []
+
+    def handle_data(self, data):
+        self._chunks.append(data)
+
+    def get_text(self):
+        return "".join(self._chunks)
+
+
+def html_to_text(html):
+    parser = HtmlTextExtractor()
+    parser.feed(html)
+    return parser.get_text()
+
+
+def extract_text_from_pdf(file_bytes):
+    try:
+        import pdfplumber
+
+        with pdfplumber.open(io.BytesIO(file_bytes)) as pdf:
+            return "\n\n".join(page.extract_text() or "" for page in pdf.pages)
+    except Exception:
+        pass
+
+    try:
+        from PyPDF2 import PdfReader
+
+        reader = PdfReader(io.BytesIO(file_bytes))
+        return "\n\n".join(page.extract_text() or "" for page in reader.pages)
+    except Exception:
+        raise ValueError(
+            "PDF ingestion requires pdfplumber or PyPDF2. Install one with `pip install pdfplumber PyPDF2`."
+        )
+
+
+def extract_text_from_docx(file_bytes):
+    try:
+        import docx
+
+        document = docx.Document(io.BytesIO(file_bytes))
+        paragraphs = [paragraph.text for paragraph in document.paragraphs if paragraph.text]
+        tables = []
+        for table in document.tables:
+            for row in table.rows:
+                for cell in row.cells:
+                    if cell.text:
+                        tables.append(cell.text)
+        return "\n".join(paragraphs + tables)
+    except Exception:
+        raise ValueError(
+            "DOCX ingestion requires python-docx. Install it with `pip install python-docx`."
+        )
+
+
+def extract_text_from_pptx(file_bytes):
+    try:
+        from pptx import Presentation
+
+        presentation = Presentation(io.BytesIO(file_bytes))
+        texts = []
+        for slide in presentation.slides:
+            for shape in slide.shapes:
+                if hasattr(shape, "text") and shape.text:
+                    texts.append(shape.text)
+                if shape.shape_type == 19 and shape.has_table:
+                    for row in shape.table.rows:
+                        for cell in row.cells:
+                            if cell.text:
+                                texts.append(cell.text)
+        return "\n".join(texts)
+    except Exception:
+        raise ValueError(
+            "PPTX ingestion requires python-pptx. Install it with `pip install python-pptx`."
+        )
+
+
+def extract_text_from_bytes(file_bytes, file_name, mime_type=None):
+    extension = Path(file_name).suffix.lower()
+    if extension in {".txt", ".md", ".csv", ".json", ".py", ".js", ".css"}:
+        return file_bytes.decode("utf-8", errors="replace")
+    if extension in {".html", ".htm"}:
+        return html_to_text(file_bytes.decode("utf-8", errors="replace"))
+    if extension == ".pdf":
+        return extract_text_from_pdf(file_bytes)
+    if extension == ".docx":
+        return extract_text_from_docx(file_bytes)
+    if extension == ".pptx":
+        return extract_text_from_pptx(file_bytes)
+    if extension == ".ppt":
+        raise ValueError(
+            "Legacy PPT (.ppt) is not supported. Please convert to PPTX and try again."
+        )
+    if mime_type and mime_type.startswith("text/"):
+        return file_bytes.decode("utf-8", errors="replace")
+    raise ValueError(
+        f"Unsupported document type '{extension}'. Supported file types include PDF, DOCX, PPTX, HTML, TXT, MD, CSV, JSON, PY, JS, and CSS."
+    )
+
+
+def decode_document_payload(doc):
+    if doc.get("text") is not None:
+        return doc["text"]
+    if doc.get("fileData"):
+        file_name = doc.get("fileName") or doc.get("title") or "document"
+        mime_type = doc.get("mimeType")
+        file_bytes = base64.b64decode(doc["fileData"])
+        return extract_text_from_bytes(file_bytes, file_name, mime_type)
+    raise ValueError("Document payload must include either text or encoded fileData for ingestion." )
 
 
 class HtmlTextExtractor(HTMLParser):
@@ -377,12 +492,17 @@ def ingest_documents(payload):
     else:
         upsert_fallback(collection, chunks, embeddings)
 
+    graph_result = {"status": "disabled"}
+    if payload.get("graphEnabled", True):
+        graph_result = upsert_graph_chunks(collection, chunks, payload)
+
     return {
         "status": "ingested",
         "collection": collection,
         "chunks": len(chunks),
         "vectorBackend": vector_backend,
         "embeddingBackend": embedding_backend,
+        "graph": graph_result,
         "store": vector_store_status(),
     }
 
@@ -392,16 +512,67 @@ def retrieve_context(config, query):
     embedding_model = config.get("embeddingModel") or DEFAULT_EMBEDDING_MODEL
     base_url = config.get("baseUrl") or DEFAULT_BASE_URL
     vector_backend = resolve_vector_backend(config.get("vectorBackend"))
-    require_backend_available(vector_backend)
     top_k = int(config.get("topK") or 3)
+    retrieval_mode = (config.get("retrievalMode") or "vector").lower()
+    if retrieval_mode not in {"vector", "graph", "hybrid"}:
+        retrieval_mode = "vector"
+    if retrieval_mode != "graph":
+        require_backend_available(vector_backend)
+    graph_top_k = int(config.get("graphTopK") or top_k)
+    graph_hops = int(config.get("graphHops") or 1)
 
     if not query.strip():
         return {
             "context": "Retriever received an empty query.",
             "matches": [],
             "vectorBackend": vector_backend,
+            "retrievalMode": retrieval_mode,
         }
 
+    if retrieval_mode == "graph":
+        graph_retrieval = retrieve_graph_context(collection, query, graph_top_k, graph_hops, config)
+        return {
+            **graph_retrieval,
+            "retrievalMode": "graph",
+            "vectorBackend": vector_backend,
+            "embeddingBackend": None,
+        }
+
+    vector_retrieval = retrieve_vector_context(
+        collection,
+        query,
+        embedding_model,
+        base_url,
+        vector_backend,
+        top_k,
+    )
+    if retrieval_mode == "hybrid":
+        graph_retrieval = retrieve_graph_context(collection, query, graph_top_k, graph_hops, config)
+        combined_matches = merge_retrieval_matches(
+            vector_retrieval.get("matches", []),
+            graph_retrieval.get("matches", []),
+        )
+        context_parts = [
+            part for part in [
+                vector_retrieval.get("context"),
+                graph_retrieval.get("context"),
+            ]
+            if part
+        ]
+        return {
+            "context": "\n\n---\n\n".join(context_parts) or "No hybrid retrieval context found.",
+            "matches": combined_matches,
+            "vectorBackend": vector_backend,
+            "embeddingBackend": vector_retrieval.get("embeddingBackend"),
+            "retrievalMode": "hybrid",
+            "graphBackend": graph_retrieval.get("graphBackend"),
+            "graphEvidence": graph_retrieval.get("graphEvidence"),
+        }
+
+    return {**vector_retrieval, "retrievalMode": "vector"}
+
+
+def retrieve_vector_context(collection, query, embedding_model, base_url, vector_backend, top_k):
     query_embedding, embedding_backend = embed_texts([query], embedding_model, base_url)
     if vector_backend == "chroma":
         matches = query_chroma(collection, query_embedding[0], top_k)
@@ -435,6 +606,21 @@ def retrieve_context(config, query):
         "vectorBackend": vector_backend,
         "embeddingBackend": embedding_backend,
     }
+
+
+def merge_retrieval_matches(vector_matches, graph_matches):
+    merged = []
+    seen = set()
+    for stage, matches in (("vector", vector_matches), ("graph", graph_matches)):
+        for match in matches:
+            metadata = dict(match.get("metadata", {}))
+            match_id = metadata.get("id") or stable_id(stage, metadata.get("source"), metadata.get("title"), match.get("text"))
+            if match_id in seen:
+                continue
+            seen.add(match_id)
+            metadata.setdefault("stage", stage)
+            merged.append({**match, "metadata": metadata})
+    return merged
 
 
 def chunk_text(text, chunk_size, overlap):

@@ -1,6 +1,7 @@
+from dataclasses import dataclass, field
 import json
 import time
-
+from typing import Any
 
 MOCK_MCP_TOOLS = {
     "demo.weather": {
@@ -23,14 +24,84 @@ MOCK_MCP_TOOLS = {
     },
 }
 
+@dataclass
+class McpServerConfig:
+    id: str
+    label: str
+    transport: str      # "stdio" or "http"
+    #stdio
+    command: str = None
+    args: list = field(default_factory=list)
+    #http
+    url: str = None
+    headers: dict = field(default_factory=dict)
 
-def list_mcp_tools():
-    return [
-        {"id": tool_id, **metadata}
-        for tool_id, metadata in sorted(MOCK_MCP_TOOLS.items())
-    ]
+class McpClientRegistry:
+    def __init__(self):
+        self._configs: dict[str, McpServerConfig] = {}
+        self._clients: dict[str, Any] = {}
+        self._loop = None
 
+    def set_loop(self, loop):
+        self._loop = loop
 
+    def add_server(self, config: McpServerConfig):
+        """Register a server config. Call connect() after to bring it online"""
+        self._configs[config.id] = config
+
+    def remove_server(self, server_id: str):
+        if server_id == "internal":
+            return
+        self._clients.pop(server_id, None)
+        self._configs.pop(server_id, None)
+
+    async def connect(self, server_id: str):
+        from backend.agents.tool_client import McpToolClient
+
+        config = self._configs[server_id]
+        client = McpToolClient.from_config(config)
+        await client.__aenter__()
+        self._clients[server_id] = client
+
+    async def connect_all(self):
+        for server_id in self._configs:
+            await self.connect(server_id)
+
+    def get_client(self, server_id: str):
+        return self._clients.get(server_id)
+
+    def all_clients(self) -> dict[str, Any]:
+        return dict(self._clients)
+
+    def list_servers(self) -> list[dict]:
+        return [
+            {
+                "id": sid,
+                "label": cfg.label,
+                "transport": cfg.transport,
+                "connected": sid in self._clients,
+            }
+            for sid, cfg in self._configs.items()
+        ]
+
+# singleton
+registry = McpClientRegistry()
+
+async def _list_all_tools():
+    tools = []
+    for server_id, client in registry.all_clients().items():
+        server_tools = await client.list_tools()
+        for tool in server_tools:
+            tools.append({
+                "serverId": server_id,
+                "name": tool.name,
+                "description": tool.description,
+                "inputSchema": tool.inputSchema,
+            })
+    return tools
+    
+    
+    
 def call_mcp_tool(tool_id, arguments=None, incoming=""):
     if tool_id not in MOCK_MCP_TOOLS:
         raise ValueError(f"MCP tool '{tool_id}' is not registered.")
@@ -75,3 +146,4 @@ def normalize_arguments(arguments):
             raise ValueError("MCP arguments must be a JSON object.")
         return parsed
     raise ValueError("MCP arguments must be a JSON object.")
+

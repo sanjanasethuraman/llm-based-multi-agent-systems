@@ -4,6 +4,8 @@ import json
 import mimetypes
 import os
 import sys
+import asyncio
+import threading
 from pathlib import Path
 import time
 from urllib.parse import parse_qs, urlparse
@@ -22,9 +24,10 @@ try:
         save_workflow,
     )
     from agents.huggingface import check_huggingface_status
-    from mcp_registry import list_mcp_tools
     from rag import check_ollama_status, ingest_documents, list_vector_collections, vector_store_status
     from workflow import generate_python, run_workflow, validate_workflow
+    from mcp_registry import registry, McpServerConfig, _list_all_tools
+    from graph_rag import graph_store_status, import_seed_graph, load_seed_file
 except ModuleNotFoundError:
     from backend.app_database import (
         get_summary,
@@ -35,9 +38,10 @@ except ModuleNotFoundError:
         save_workflow,
     )
     from backend.agents.huggingface import check_huggingface_status
-    from backend.mcp_registry import list_mcp_tools
     from backend.rag import check_ollama_status, ingest_documents, list_vector_collections, vector_store_status
     from backend.workflow import generate_python, run_workflow, validate_workflow
+    from backend.mcp_registry import registry, McpServerConfig, _list_all_tools
+    from backend.graph_rag import graph_store_status, import_seed_graph, load_seed_file
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -49,8 +53,33 @@ EXAMPLES_DIR = ROOT / "examples"
 WORKFLOW_FILE = DATA_DIR / "current_workflow.json"
 PYTHON_EXPORT_FILE = GENERATED_DIR / "generated_workflow.py"
 
+_mcp_client = None
+_loop: asyncio.AbstractEventLoop = None
+
+def _start_background_loop():
+    global _loop
+    _loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(_loop)
+    _loop.run_forever()
+
+async def _init_mcp_clients():
+    registry.add_server(McpServerConfig(
+        id="internal",
+        label="Internal Tools",
+        transport="stdio",
+        command="python3",
+        args=["-m", "backend.tools.run_mcp_server"]
+    ))
+    try:
+        await registry.connect_all()
+    except ModuleNotFoundError as exc:
+        print(f"MCP tools unavailable during startup: {exc}")
+    except Exception as exc:
+        print(f"MCP tools failed to connect during startup: {exc}")
+
 
 class AppHandler(BaseHTTPRequestHandler):
+
     def do_GET(self):
         parsed = urlparse(self.path)
         if parsed.path == "/api/health":
@@ -63,10 +92,15 @@ class AppHandler(BaseHTTPRequestHandler):
             return self._send_json(vector_store_status())
         if parsed.path == "/api/vector-store/collections":
             return self._send_json(list_vector_collections())
+        if parsed.path == "/api/graph-rag/status":
+            return self._send_json(graph_store_status())
         if parsed.path == "/api/documents/collections":
             return self._send_json(self._collections_payload())
         if parsed.path == "/api/mcp/tools":
-            return self._send_json({"tools": list_mcp_tools()})
+            future = asyncio.run_coroutine_threadsafe(_list_all_tools(), _loop)
+            return self._send_json({"tools": future.result(timeout=10)})
+        if parsed.path == "/api/mcp/servers":
+            return self._send_json({"servers": registry.list_servers()})
         if parsed.path == "/api/provider/ollama-status":
             params = parse_qs(parsed.query)
             base_url = params.get("baseUrl", [None])[0]
@@ -94,9 +128,33 @@ class AppHandler(BaseHTTPRequestHandler):
                         "error": "Workflow validation failed.",
                         "validation": validation,
                     }, status=400)
-                result = run_workflow(payload)
+                future = asyncio.run_coroutine_threadsafe(
+                    run_workflow(payload, registry),
+                    _loop
+                )
+                result = future.result()
                 save_run(payload, result)
                 return self._send_json(result)
+            if self.path == "/api/mcp/connect":
+                try:
+                    config = McpServerConfig(**payload)
+                    registry.add_server(config)
+                    future = asyncio.run_coroutine_threadsafe(
+                        registry.connect(config.id), _loop
+                    )
+                    future.result(timeout=10)
+                    return self._send_json({"status": "connected", "id": config.id})
+                except Exception as e:
+                    import traceback
+                    traceback.print_exc()
+                    return self._send_json({"error": str(e)}, status=500)
+            if self.path == "/api/mcp/disconnect":
+                registry.remove_server(payload["id"])
+                return self._send_json({"status": "disconnected"})
+            if self.path == "/api/graph-rag/seed-demo":
+                seed_file = EXAMPLES_DIR / "biomedical_kg_seed.json"
+                seed_payload = load_seed_file(seed_file)
+                return self._send_json(import_seed_graph(seed_payload, payload))
             if self.path == "/api/generate-python":
                 return self._send_json({"code": generate_python(payload)})
             if self.path == "/api/validate":
@@ -214,6 +272,9 @@ class AppHandler(BaseHTTPRequestHandler):
                 payload = json.loads(path.read_text(encoding="utf-8"))
             except json.JSONDecodeError:
                 continue
+            workflow = payload.get("workflow", payload)
+            if not isinstance(workflow, dict) or "nodes" not in workflow or "edges" not in workflow:
+                continue
             examples.append({
                 "name": path.stem,
                 "label": payload.get("label") or path.stem.replace("_", " ").title(),
@@ -229,9 +290,12 @@ class AppHandler(BaseHTTPRequestHandler):
         if not path.exists():
             return self._send_json({"error": f"Example not found: {safe_name}"}, status=404)
         payload = json.loads(path.read_text(encoding="utf-8"))
+        workflow = payload.get("workflow", payload)
+        if not isinstance(workflow, dict) or "nodes" not in workflow or "edges" not in workflow:
+            return self._send_json({"error": f"Example is not a workflow: {safe_name}"}, status=400)
         return self._send_json({
             "name": safe_name,
-            "workflow": payload.get("workflow", payload),
+            "workflow": workflow,
             "label": payload.get("label", safe_name),
             "description": payload.get("description", ""),
         })
@@ -267,6 +331,18 @@ class AppHandler(BaseHTTPRequestHandler):
 
 def main():
     init_db()
+
+    # Start persistent event loop in background thread
+    thread = threading.Thread(target=_start_background_loop, daemon=True)
+    thread.start()
+
+    while _loop is None:
+        time.sleep(0.01)
+    registry.set_loop(_loop)
+    
+    future = asyncio.run_coroutine_threadsafe(_init_mcp_clients(), _loop)
+    future.result(timeout=10)
+
     host = os.environ.get("VISUAL_MAS_HOST", "127.0.0.1")
     preferred_port = int(os.environ.get("VISUAL_MAS_PORT", "8000"))
     server, port = create_server(host, preferred_port)

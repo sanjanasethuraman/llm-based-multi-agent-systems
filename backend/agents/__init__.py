@@ -1,14 +1,26 @@
-from .mock import MockProvider
-from .ollama import OllamaProvider
-from .huggingface import HuggingFaceProvider
+AGENT_PROVIDERS = {}
 
-AGENT_PROVIDERS = {
-    "huggingface": HuggingFaceProvider(),
-    "mock": MockProvider(),
-    "ollama": OllamaProvider(),
-}
+
+def _load_default_provider(name):
+    if name == "huggingface":
+        from .huggingface import HuggingFaceProvider
+
+        return HuggingFaceProvider()
+    if name == "mock":
+        from .mock import MockProvider
+
+        return MockProvider()
+    if name == "ollama":
+        from .ollama import OllamaProvider
+
+        return OllamaProvider()
+    return None
 
 def get_agent_provider(name):
+    if name not in AGENT_PROVIDERS:
+        provider = _load_default_provider(name)
+        if provider is not None:
+            AGENT_PROVIDERS[name] = provider
     return AGENT_PROVIDERS.get(name)
 
 def register_agent_provider(name, provider):
