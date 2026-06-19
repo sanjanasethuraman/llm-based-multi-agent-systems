@@ -1,0 +1,33 @@
+
+
+/* Multi-Tab Workflow Styles */
+.workflow-tabs-section {
+  margin-bottom: 8px;
+}
+
+.comparison-panel {
+  margin-top: 14px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 14px;
+}
+
+.comparison-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--line);
+}
+
+.comparison-header h2 {
+  margin: 0;
+}
+
+.comparison-header p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+}

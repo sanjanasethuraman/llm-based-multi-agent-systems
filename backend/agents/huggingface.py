@@ -13,7 +13,7 @@ DEFAULT_HF_MODEL = "mistralai/Mistral-7B-Instruct-v0.3"
 class HuggingFaceProvider(AgentProvider):
     name = "huggingface"
 
-    async def run(self, config, incoming, mcp_client, available_tools):
+    async def run(self, config, incoming, mcp_registry, available_tools):
         name = config.get("name", "Agent")
         model = config.get("model") or DEFAULT_HF_MODEL
         token = get_huggingface_token(config)

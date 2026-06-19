@@ -25,7 +25,7 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-import { getJson, postJson } from "./api.js";
+import { getJson, postJson, runWorkflowBatch, getVectorDatabaseProviders } from "./api.js";
 import {
   calculateNextId,
   createNode,
@@ -37,7 +37,11 @@ import {
 } from "./workflow.js";
 
 import McpServersPanel from "./components/panels/McpServersPanel.jsx"
-import IconButton from "./components/IconButton.jsx";
+import WorkflowTabs from "./components/WorkflowTabs.jsx"
+import ExecutionModeControl from "./components/ExecutionModeControl.jsx"
+import ComparisonReport from "./components/ComparisonReport.jsx"
+import IconButton from "./components/IconButton.jsx"
+import { useWorkflowTabs } from "./hooks/useWorkflowTabs.js";
 
 const nodeTypes = { workflow: WorkflowNode };
 const providerOptions = [
@@ -62,6 +66,7 @@ const vectorBackendOptions = [
   { value: "local-json-fallback", label: "Local JSON" },
   { value: "faiss", label: "FAISS" },
 ];
+// Note: Dynamic options will be loaded from backend API in WorkflowApp component
 const retrievalModeOptions = [
   { value: "vector", label: "Vector" },
   { value: "graph", label: "Graph" },
@@ -77,7 +82,25 @@ export default function App() {
 }
 
 function WorkflowApp() {
-  const [workflow, setWorkflow] = useState(() => normalizeWorkflow(DEFAULT_WORKFLOW));
+  // Multi-tab workflow management
+  const {
+    tabs,
+    activeTabId,
+    activeTab,
+    createTab,
+    duplicateTab,
+    updateTabWorkflow,
+    updateTabExecutionMode,
+    setTabExecutionResults,
+    closeTab,
+    renameTab,
+    setActiveTabId,
+  } = useWorkflowTabs(normalizeWorkflow(DEFAULT_WORKFLOW));
+
+  // Current active workflow
+  const workflow = activeTab?.workflow || normalizeWorkflow(DEFAULT_WORKFLOW);
+  const executionMode = activeTab?.executionMode || 'independent';
+
   const [selected, setSelected] = useState({ kind: "node", id: "agent-1" });
   const [statusMessage, setStatusMessage] = useState("Ready");
   const [output, setOutput] = useState("Run the workflow to see the final output.");
@@ -97,6 +120,8 @@ function WorkflowApp() {
   const [huggingFaceStatus, setHuggingFaceStatus] = useState(null);
   const [graphStatus, setGraphStatus] = useState(null);
   const [ingestStatus, setIngestStatus] = useState("No document ingested yet.");
+  const [comparisonReports, setComparisonReports] = useState([]);
+  const [isRunningBatch, setIsRunningBatch] = useState(false);
   const [ragForm, setRagForm] = useState({
     collection: "course_docs",
     vectorBackend: "auto",
@@ -107,6 +132,7 @@ function WorkflowApp() {
     text: "A visual multi-agent system builder lets users create workflows by connecting components such as inputs, agents, tools, retrievers, vector databases, and outputs. RAG adds document ingestion, embeddings, vector search, and retrieved context so agents can answer using project-specific knowledge.",
     files: [],
   });
+  const [dynamicVectorBackendOptions, setDynamicVectorBackendOptions] = useState(vectorBackendOptions);
 
   const validation = useMemo(() => validateWorkflow(workflow), [workflow]);
   const selectedNode = useMemo(
@@ -182,6 +208,7 @@ function WorkflowApp() {
     refreshCollections();
     refreshMcpTools();
     refreshGraphStatus();
+    loadVectorDatabaseProviders();
   }, []);
 
   useEffect(() => {
@@ -249,8 +276,9 @@ function WorkflowApp() {
   ]);
 
   const updateWorkflow = useCallback((updater) => {
-    setWorkflow((current) => normalizeWorkflow(typeof updater === "function" ? updater(current) : updater));
-  }, []);
+    const updated = normalizeWorkflow(typeof updater === "function" ? updater(workflow) : updater);
+    updateTabWorkflow(activeTabId, updated);
+  }, [workflow, activeTabId, updateTabWorkflow]);
 
   const updateNode = useCallback(
     (nodeId, patch) => {
@@ -380,6 +408,24 @@ function WorkflowApp() {
     }
   }
 
+  async function loadVectorDatabaseProviders() {
+    try {
+      const result = await getVectorDatabaseProviders();
+      if (result.list && result.list.length > 0) {
+        // Convert provider names to options format
+        const options = result.list.map((provider) => ({
+          value: provider,
+          label: result.providers[provider]?.name || provider.charAt(0).toUpperCase() + provider.slice(1),
+        }));
+        setDynamicVectorBackendOptions(options);
+      }
+    } catch (error) {
+      console.warn("Failed to load vector database providers:", error);
+      // Fallback to default options
+      setDynamicVectorBackendOptions(vectorBackendOptions);
+    }
+  }
+
   async function loadExample(name = selectedExample) {
     if (!name) {
       setStatusMessage("No example selected.");
@@ -388,7 +434,7 @@ function WorkflowApp() {
     try {
       const result = await getJson(`/api/example?name=${encodeURIComponent(name)}`);
       const nextWorkflow = normalizeWorkflow(result.workflow);
-      setWorkflow(nextWorkflow);
+      updateTabWorkflow(activeTabId, nextWorkflow);
       setNodeResults({});
       setRetrievals([]);
       setMcpCalls([]);
@@ -408,7 +454,7 @@ function WorkflowApp() {
         return;
       }
       const nextWorkflow = normalizeWorkflow(result.workflow);
-      setWorkflow(nextWorkflow);
+      updateTabWorkflow(activeTabId, nextWorkflow);
       setNodeResults({});
       setRetrievals([]);
       setMcpCalls([]);
@@ -644,8 +690,81 @@ function WorkflowApp() {
     }
   }
 
+  async function runWorkflowSequential() {
+    try {
+      setIsRunningBatch(true);
+      setStatusMessage("Running all workflows sequentially...");
+      const result = await runWorkflowBatch(
+        tabs.map((tab) => tab.workflow),
+        'sequential'
+      );
+      setComparisonReports(result.batchResult.reports || []);
+      setStatusMessage(`Sequential execution completed: ${result.summary.successCount}/${result.summary.totalWorkflows} succeeded`);
+      
+      // Update each tab with its results
+      const reports = result.batchResult.reports || [];
+      reports.forEach((report, idx) => {
+        if (tabs[idx]) {
+          setTabExecutionResults(tabs[idx].id, {
+            status: report.status,
+            durationMs: report.durationMs,
+            timestamp: report.timestamp,
+          });
+        }
+      });
+    } catch (error) {
+      setStatusMessage(`Batch execution failed: ${error.message}`);
+      setComparisonReports([]);
+    } finally {
+      setIsRunningBatch(false);
+    }
+  }
+
+  async function runWorkflowParallel() {
+    try {
+      setIsRunningBatch(true);
+      setStatusMessage("Running all workflows in parallel...");
+      const result = await runWorkflowBatch(
+        tabs.map((tab) => tab.workflow),
+        'parallel'
+      );
+      setComparisonReports(result.batchResult.reports || []);
+      const speedup = result.summary.timeSpeedupFactor || 1;
+      setStatusMessage(`Parallel execution completed: ${result.summary.successCount}/${result.summary.totalWorkflows} succeeded (${speedup.toFixed(2)}x speedup)`);
+      
+      // Update each tab with its results
+      const reports = result.batchResult.reports || [];
+      reports.forEach((report, idx) => {
+        if (tabs[idx]) {
+          setTabExecutionResults(tabs[idx].id, {
+            status: report.status,
+            durationMs: report.durationMs,
+            timestamp: report.timestamp,
+          });
+        }
+      });
+    } catch (error) {
+      setStatusMessage(`Batch execution failed: ${error.message}`);
+      setComparisonReports([]);
+    } finally {
+      setIsRunningBatch(false);
+    }
+  }
+
   return (
     <div className="app-shell">
+      <div className="workflow-tabs-section">
+        <WorkflowTabs
+          tabs={tabs}
+          activeTabId={activeTabId}
+          onSelectTab={setActiveTabId}
+          onCreateTab={createTab}
+          onDuplicateTab={duplicateTab}
+          onCloseTab={closeTab}
+          onRenameTab={renameTab}
+        />
+      </div>
+
       <header className="topbar">
         <div>
           <h1>Visual MAS Tool</h1>
@@ -671,6 +790,16 @@ function WorkflowApp() {
           <IconButton icon={Download} label="Export .py" onClick={exportPythonFile} />
         </div>
       </header>
+
+      <ExecutionModeControl
+        mode={executionMode}
+        tabs={tabs}
+        activeTabId={activeTabId}
+        onModeChange={(mode) => updateTabExecutionMode(activeTabId, mode)}
+        onRunSequential={runWorkflowSequential}
+        onRunParallel={runWorkflowParallel}
+        isRunning={isRunningBatch}
+      />
 
       <div className="status-message">{statusMessage}</div>
 
@@ -734,6 +863,7 @@ function WorkflowApp() {
         onSeedBiomedicalGraph={seedBiomedicalGraph}
         onIngest={ingestDocuments}
         onRefreshCollections={refreshCollections}
+        dynamicVectorBackendOptions={dynamicVectorBackendOptions}
       />
 
       <McpServersPanel
@@ -746,6 +876,16 @@ function WorkflowApp() {
       <ResultPanels output={output} logs={logs} stats={stats} nodeResults={nodeResults} retrievals={retrievals} />
       <RetrievalPanel retrievals={retrievals} />
       <McpCallsPanel calls={mcpCalls} />
+
+      {comparisonReports.length > 0 && (
+        <section className="comparison-panel">
+          <div className="comparison-header">
+            <h2>Workflow Comparison Report</h2>
+            <p>{comparisonReports.length} workflows executed</p>
+          </div>
+          <ComparisonReport reports={comparisonReports} />
+        </section>
+      )}
 
       <section className="code-panel">
         <div className="code-header">
@@ -1001,7 +1141,7 @@ function ConfigPanel({ node, validation, huggingFaceStatus, mcpTools, mcpServers
                 value={node.config.vectorBackend || "auto"}
                 onChange={(event) => updateConfig({ vectorBackend: event.target.value })}
               >
-                {vectorBackendOptions.map((backend) => (
+                {dynamicVectorBackendOptions.map((backend) => (
                   <option key={backend.value} value={backend.value}>
                     {backend.label}
                   </option>
@@ -1231,6 +1371,7 @@ function RagPanel({
   onSeedBiomedicalGraph,
   onIngest,
   onRefreshCollections,
+  dynamicVectorBackendOptions,
 }) {
   const updateField = (field, value) => onFormChange((current) => ({ ...current, [field]: value }));
   return (
@@ -1255,7 +1396,7 @@ function RagPanel({
         <label>
           Vector Backend
           <select value={form.vectorBackend} onChange={(event) => updateField("vectorBackend", event.target.value)}>
-            {vectorBackendOptions.map((backend) => (
+            {dynamicVectorBackendOptions.map((backend) => (
               <option key={backend.value} value={backend.value}>
                 {backend.label}
               </option>

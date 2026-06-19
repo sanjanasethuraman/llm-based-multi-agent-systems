@@ -21,3 +21,14 @@ export async function postJson(url, body) {
   }
   return payload;
 }
+
+export async function runWorkflowBatch(workflows, mode = 'sequential') {
+  return postJson("/api/run-batch", {
+    workflows,
+    mode,
+  });
+}
+
+export async function getVectorDatabaseProviders() {
+  return getJson("/api/vector-db/providers");
+}

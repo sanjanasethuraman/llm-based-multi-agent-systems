@@ -28,6 +28,8 @@ try:
     from workflow import generate_python, run_workflow, validate_workflow
     from mcp_registry import registry, McpServerConfig, _list_all_tools
     from graph_rag import graph_store_status, import_seed_graph, load_seed_file
+    from batch_workflow import run_workflow_batch, generate_comparison_summary
+    from vector_db import VectorDatabaseRegistry
 except ModuleNotFoundError:
     from backend.app_database import (
         get_summary,
@@ -42,6 +44,8 @@ except ModuleNotFoundError:
     from backend.workflow import generate_python, run_workflow, validate_workflow
     from backend.mcp_registry import registry, McpServerConfig, _list_all_tools
     from backend.graph_rag import graph_store_status, import_seed_graph, load_seed_file
+    from backend.batch_workflow import run_workflow_batch, generate_comparison_summary
+    from backend.vector_db import VectorDatabaseRegistry
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -111,6 +115,11 @@ class AppHandler(BaseHTTPRequestHandler):
             token = params.get("token", [None])[0]
             base_url = params.get("baseUrl", [None])[0]
             return self._send_json(check_huggingface_status(model, token, base_url))
+        if parsed.path == "/api/vector-db/providers":
+            return self._send_json({
+                "providers": VectorDatabaseRegistry.get_available_providers(),
+                "list": VectorDatabaseRegistry.list_providers(),
+            })
         if parsed.path == "/api/examples":
             return self._send_json(self._list_examples())
         if parsed.path == "/api/example":
@@ -135,6 +144,28 @@ class AppHandler(BaseHTTPRequestHandler):
                 result = future.result()
                 save_run(payload, result)
                 return self._send_json(result)
+            if self.path == "/api/run-batch":
+                workflows = payload.get("workflows", [])
+                mode = payload.get("mode", "sequential")
+                if not workflows:
+                    return self._send_json({"error": "No workflows provided"}, status=400)
+                for wf in workflows:
+                    validation = validate_workflow(wf)
+                    if validation["errors"]:
+                        return self._send_json({
+                            "error": "Workflow validation failed.",
+                            "validation": validation,
+                        }, status=400)
+                future = asyncio.run_coroutine_threadsafe(
+                    run_workflow_batch(workflows, registry, mode),
+                    _loop
+                )
+                batch_result = future.result()
+                summary = generate_comparison_summary(batch_result)
+                return self._send_json({
+                    "batchResult": batch_result,
+                    "summary": summary,
+                })
             if self.path == "/api/mcp/connect":
                 try:
                     config = McpServerConfig(**payload)

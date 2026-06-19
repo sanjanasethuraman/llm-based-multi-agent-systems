@@ -1,0 +1,164 @@
+.workflow-tabs-container {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  background-color: #f5f5f5;
+  border-bottom: 1px solid #ddd;
+  overflow-x: auto;
+}
+
+.workflow-tabs {
+  display: flex;
+  gap: 4px;
+  flex: 1;
+  overflow-x: auto;
+  padding-bottom: 4px;
+  margin-bottom: -4px;
+}
+
+.workflow-tabs::-webkit-scrollbar {
+  height: 6px;
+}
+
+.workflow-tabs::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.workflow-tabs::-webkit-scrollbar-thumb {
+  background: #ccc;
+  border-radius: 3px;
+}
+
+.workflow-tabs::-webkit-scrollbar-thumb:hover {
+  background: #999;
+}
+
+.workflow-tab {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background-color: #e9ecef;
+  border: 1px solid #dee2e6;
+  border-radius: 4px 4px 0 0;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+  min-width: max-content;
+}
+
+.workflow-tab:hover {
+  background-color: #dfe3e9;
+}
+
+.workflow-tab.active {
+  background-color: #fff;
+  border-bottom-color: #fff;
+  box-shadow: 0 -2px 4px rgba(0, 0, 0, 0.05);
+}
+
+.tab-name {
+  font-weight: 500;
+  font-size: 13px;
+  color: #333;
+  cursor: text;
+  user-select: none;
+}
+
+.tab-name:hover {
+  text-decoration: underline;
+}
+
+.tab-status {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.tab-status.success {
+  background-color: #28a745;
+  box-shadow: 0 0 4px rgba(40, 167, 69, 0.6);
+}
+
+.tab-status.error {
+  background-color: #dc3545;
+  box-shadow: 0 0 4px rgba(220, 53, 69, 0.6);
+}
+
+.tab-status.running {
+  background-color: #ffc107;
+  box-shadow: 0 0 4px rgba(255, 193, 7, 0.6);
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.6;
+  }
+}
+
+.tab-actions {
+  display: flex;
+  gap: 4px;
+  margin-left: 4px;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.workflow-tab:hover .tab-actions,
+.workflow-tab.active .tab-actions {
+  opacity: 1;
+}
+
+.tab-action-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: #666;
+  border-radius: 2px;
+  transition: all 0.2s ease;
+}
+
+.tab-action-btn:hover:not(:disabled) {
+  background-color: rgba(0, 0, 0, 0.1);
+  color: #333;
+}
+
+.tab-action-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.add-tab-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  background-color: #e9ecef;
+  border: 1px solid #dee2e6;
+  border-radius: 4px;
+  cursor: pointer;
+  color: #666;
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+}
+
+.add-tab-btn:hover {
+  background-color: #dfe3e9;
+  color: #333;
+  border-color: #adb5bd;
+}
