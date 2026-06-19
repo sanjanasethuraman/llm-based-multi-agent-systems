@@ -863,6 +863,7 @@ function WorkflowApp() {
         onSeedBiomedicalGraph={seedBiomedicalGraph}
         onIngest={ingestDocuments}
         onRefreshCollections={refreshCollections}
+        dynamicVectorBackendOptions={dynamicVectorBackendOptions}
       />
 
       <McpServersPanel
@@ -1370,6 +1371,7 @@ function RagPanel({
   onSeedBiomedicalGraph,
   onIngest,
   onRefreshCollections,
+  dynamicVectorBackendOptions,
 }) {
   const updateField = (field, value) => onFormChange((current) => ({ ...current, [field]: value }));
   return (
