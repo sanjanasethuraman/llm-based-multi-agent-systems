@@ -1,4 +1,5 @@
 import json
+import sys
 import time
 import inspect
 from collections import defaultdict
@@ -6,9 +7,9 @@ from pprint import pformat
 
 from backend.nodes import get_node_executor
 from backend.utils import topological_order, preview_text
-from backend.mcp_registry import McpClientRegistry
+from backend.mcp_registry import McpClientRegistry, McpServerConfig
 
-VALID_NODE_TYPES = {"input", "agent", "tool", "output", "retriever", "vector_db", "mcp_tool"}
+VALID_NODE_TYPES = {"input", "agent", "tool", "output", "retriever", "vector_db", "sub_agent"}
 VALID_AGENT_PROVIDERS = {"mock", "ollama", "huggingface", "api"}
 VALID_VECTOR_BACKENDS = {"auto", "chroma", "local-json-fallback", "faiss"}
 VALID_RETRIEVAL_MODES = {"vector", "graph", "hybrid"}
@@ -172,6 +173,8 @@ async def run_workflow(workflow, mcp_registry: McpClientRegistry):
         "mcpCalls": [],
         "mcp_registry": mcp_registry,
         }
+    
+    await setup_sub_agent_servers(nodes, edges, mcp_registry)
 
     for node_id in order:
         node_started = time.perf_counter()
@@ -236,6 +239,31 @@ def log_item(node_id, node_type, message, status="completed"):
         "status": status,
         "time": round(time.time(), 3),
     }
+
+async def setup_sub_agent_servers(nodes, edges, mcp_registry: McpClientRegistry):
+    for node in nodes.values():
+        if node.get("type") != "sub_agent":
+            continue
+        node_id = node.get("id")
+        config = node.get("config")
+        server_id = f"sub-agent-{node_id}"
+        if server_id not in mcp_registry.all_clients().keys():
+            mcp_registry.add_server(McpServerConfig(
+                id=server_id,
+                label=config.get("name", node.get("label")),
+                transport="stdio",
+                command=sys.executable,
+                args=[
+                    "-m",
+                    "backend.agents.agent_mcp_server",
+                    json.dumps(node_id),
+                    json.dumps(config),
+                    json.dumps(edges),
+                    json.dumps(nodes)
+                ]
+            ))
+            await mcp_registry.connect(server_id=server_id)
+
 
 def generate_python(workflow):
     serialized = pformat(workflow, width=100, sort_dicts=False)

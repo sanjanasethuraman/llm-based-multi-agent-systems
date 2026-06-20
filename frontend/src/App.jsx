@@ -915,7 +915,7 @@ function WorkflowNode({ data, selected }) {
         <span>{NODE_TYPES[node.type] || node.type}</span>
         {node.type === "agent" && <span>{node.config?.provider || "mock"}</span>}
         {node.type === "tool" && <span>{node.config?.toolName || "unselected"}</span>}
-        {node.type === "mcp_tool" && <span>{node.config?.toolId || "unselected"}</span>}
+        {node.type === "sub_agent" && <span>{node.config?.toolId || "unselected"}</span>}
       </div>
       {details && (
         <div className="node-retrieval-summary">
@@ -1227,56 +1227,105 @@ function ConfigPanel({ node, validation, huggingFaceStatus, mcpTools, mcpServers
           </>
         )}
 
-        {node.type === "mcp_tool" && (
+        {node.type === "sub_agent" && (
           <>
             <label>
-              MCP Server
+              Sub Agent Name
               <input
-                value={node.config.server || "demo"}
-                onChange={(event) => updateConfig({ server: event.target.value })}
+                value={node.config.name || ""}
+                onChange={(event) => updateConfig({ name: event.target.value })}
               />
             </label>
-            <label>
-              MCP Tool
-              <select
-                value={node.config.toolId || ""}
-                onChange={(event) => {
-                  const selectedTool = mcpTools.find((tool) => tool.id === event.target.value);
-                  updateConfig({
-                    toolId: event.target.value,
-                    server: selectedTool?.server || node.config.server || "demo",
-                    name: selectedTool ? `MCP ${selectedTool.name}` : node.config.name,
-                  });
-                }}
-              >
-                <option value="">Select a tool</option>
-                {mcpTools.map((tool) => (
-                  <option key={tool.id} value={tool.id}>
-                    {tool.id}
-                  </option>
+            <div className="field-group">
+              <span>Provider</span>
+              <div className="segmented">
+                {providerOptions.map((provider) => (
+                  <button
+                    className={node.config.provider === provider.value ? "active" : ""}
+                    key={provider.value}
+                    type="button"
+                    onClick={() => updateConfig({ provider: provider.value, ...(providerDefaults[provider.value] || {}) })}
+                  >
+                    {provider.label}
+                  </button>
                 ))}
-              </select>
-            </label>
-            {mcpTools.find((tool) => tool.id === node.config.toolId)?.description && (
-              <div className="provider-note neutral">
-                {mcpTools.find((tool) => tool.id === node.config.toolId).description}
               </div>
+            </div>
+            <ProviderNote
+              provider={node.config.provider}
+              huggingFaceStatus={huggingFaceStatus}
+              ollamaStatus={ollamaStatus}
+            />
+            <label>
+              {node.config.provider === "huggingface" ? "Hugging Face Model ID" : "Model"}
+              <input
+                value={node.config.model || ""}
+                placeholder={node.config.provider === "huggingface" ? "mistralai/Mistral-7B-Instruct-v0.3" : "llama3.2:1b"}
+                onChange={(event) => updateConfig({ model: event.target.value })}
+              />
+            </label>
+            {node.config.provider === "huggingface" && (
+              <label>
+                Hugging Face Token
+                <input
+                  autoComplete="off"
+                  type="password"
+                  value={node.config.huggingFaceToken || ""}
+                  placeholder="Uses HF_TOKEN on the backend if left blank"
+                  onChange={(event) => updateConfig({ huggingFaceToken: event.target.value })}
+                />
+              </label>
             )}
             <label>
-              Arguments JSON
-              <textarea
-                rows={7}
-                value={node.config.arguments || "{}"}
-                onChange={(event) => updateConfig({ arguments: event.target.value })}
+              {node.config.provider === "huggingface" ? "Inference API URL" : "Local Provider URL"}
+              <input
+                value={node.config.baseUrl || ""}
+                placeholder={
+                  node.config.provider === "huggingface"
+                    ? "https://router.huggingface.co/v1"
+                    : "http://127.0.0.1:11434"
+                }
+                onChange={(event) => updateConfig({ baseUrl: event.target.value })}
               />
             </label>
-            <label className="checkbox-field">
+            {node.config.provider === "huggingface" && (
+              <label>
+                Max New Tokens
+                <input
+                  max="4096"
+                  min="1"
+                  step="1"
+                  type="number"
+                  value={node.config.maxNewTokens ?? 512}
+                  onChange={(event) => updateConfig({ maxNewTokens: Number(event.target.value) })}
+                />
+              </label>
+            )}
+            <label>
+              Temperature
               <input
-                checked={node.config.includeInput !== false}
-                type="checkbox"
-                onChange={(event) => updateConfig({ includeInput: event.target.checked })}
+                max="2"
+                min="0"
+                step="0.1"
+                type="number"
+                value={node.config.temperature ?? 0.2}
+                onChange={(event) => updateConfig({ temperature: Number(event.target.value) })}
               />
-              Include incoming workflow text
+            </label>
+            <label>
+              Think
+              <select value={node.config.think ?? false} onChange={(event) => updateConfig({ think: event.target.value })}>
+                <option value={true}>true</option>
+                <option value={false}>false</option>
+              </select>
+            </label>
+            <label>
+              System Prompt
+              <textarea
+                rows={6}
+                value={node.config.systemPrompt || ""}
+                onChange={(event) => updateConfig({ systemPrompt: event.target.value })}
+              />
             </label>
           </>
         )}
