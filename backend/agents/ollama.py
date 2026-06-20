@@ -3,6 +3,9 @@ import json
 import asyncio
 from urllib import request, error
 from ollama import chat, ChatResponse
+import logging
+
+logger = logging.getLogger(__name__)
 
 class OllamaProvider(AgentProvider):
     name = "OllamaProvider"
@@ -38,16 +41,18 @@ class OllamaProvider(AgentProvider):
                     messages.append({"role": "user", "content": str(incoming)})
 
         available = {(tool["server_id"], tool["tool_name"]) for tool in available_tools}
+        logger.debug(f"available: {available}")
         ollama_tools = []
         tool_map = {}
         for server_id, client in mcp_registry.all_clients().items():
             for tool in await client.list_tools():
+                logger.debug(f"available tool: {server_id}: {tool.name}")
                 if (server_id, tool.name) in available:
                     ollama_tools.append(self._to_ollama_schema(tool))
                     tool_map[tool.name] = (server_id, client)
         
         for _ in range(self.MAX_ITERATIONS):
-            print(f"Calling Ollama model '{model}' with messages: {messages} and tools: {ollama_tools}")
+            logger.info(f"Calling Ollama model '{model}' with messages: {messages} and tools: {ollama_tools}")
             response: ChatResponse = chat(
                 model=model,
                 messages=messages,
@@ -61,9 +66,8 @@ class OllamaProvider(AgentProvider):
                 for tool_call in response.message.tool_calls:
                     tool_calls += 1
                     name = tool_call.function.name
-                    print(f"Tool call: {name} with arguments {tool_call.function.arguments}")
+                    logger.info(f"Tool call: {name} with arguments {tool_call.function.arguments}")
                     if name not in tool_map:
-                        print(f"Tool '{name}' not in available tools, skipping.")
                         messages.append({
                             "role": "tool",
                             "name": name,
@@ -79,7 +83,7 @@ class OllamaProvider(AgentProvider):
                         "content": json.dumps({"result": result}),
                     })
             else:
-                print("No tool calls, breaking out of loop.")
+                logger.info("No tool calls, breaking out of loop.")
                 break
         return response.message.content, tool_calls
     

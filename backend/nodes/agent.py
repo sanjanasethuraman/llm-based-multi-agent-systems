@@ -10,6 +10,7 @@ class AgentNodeExecutor(NodeExecutor):
         incoming = collect_incoming_map(node["id"], context["edges"], context["values"], context["nodes"])
         registry = context["mcp_registry"]
         available_tools = get_available_tools(node["id"], context["edges"], context["nodes"])
+        print(f"Available Tools: {available_tools}")
         provider_name = config.get("provider", "mock")
         provider = get_agent_provider(provider_name)
 
