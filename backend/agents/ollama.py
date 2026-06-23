@@ -61,6 +61,7 @@ class OllamaProvider(AgentProvider):
                 think=config.get("think", False),
                 stream=False,
             )
+            logger.info(f"Response: {response}")
             messages.append(response.message)
             if response.message.tool_calls:
                 for tool_call in response.message.tool_calls:

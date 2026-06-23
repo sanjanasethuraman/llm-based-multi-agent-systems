@@ -1,5 +1,4 @@
 import sys, asyncio, logging
-import concurrent.futures
 from mcp.server.fastmcp import FastMCP
 from backend.agents.tool_client import McpToolClient
 from backend.mcp_registry import McpClientRegistry, McpServerConfig
@@ -77,12 +76,10 @@ def create_sub_agent_server(node_id: str, agent_config: dict, edges: list[dict],
                     f"System prompt: {agent_config.get('systemPrompt', '')[:100]}"
     )
     async def run(input: str) -> str:
-        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-             future = executor.submit(
-                  asyncio.run,
-                  _run_agent(node_id, agent_config, edges, nodes, input)
-             )
-             return future.result()
+        # Execute the agent coroutine in the current event loop. Running
+        # a nested event loop via ``asyncio.run`` in a thread caused anyio
+        # cancel-scope/runtime errors when closing stdio clients.
+        return await _run_agent(node_id, agent_config, edges, nodes, input)
 
     return mcp
 

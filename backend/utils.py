@@ -129,7 +129,9 @@ def get_available_tools(node_id, edges, nodes) -> list[dict]:
             tools.append({
                 "type": "sub_agent",
                 "server_id": f"sub-agent-{target_node.get("id")}",
-                "tool_name": f"run_{config.get('name', 'agent')}"
+                "tool_name": f"run_{config.get('name', 'agent')}",
+                "node_id": target_node.get("id"),
+                "config": config
             })
     return tools
 

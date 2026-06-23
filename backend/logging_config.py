@@ -4,7 +4,7 @@ from pathlib import Path
 
 LOG_DIR = Path(__file__).resolve().parents[1] / "logs"
 
-def setup_logging(name: str, level=logging.DEBUG):
+def setup_logging(name: str, level=logging.INFO):
     """
     Call once at process startup.
     name: used for the log filename, e.g. "server" or "sub-agent-1"
