@@ -22,7 +22,7 @@ class OutputNodeExecutor(NodeExecutor):
                 parts.append(
                     f"--- From {source_label} ({source_type}, {src}) ---\n{text}"
                 )
-            output_text = f"--- Output from {node_label} ({node['id']}) ---\n\n" + "\n\n".join(parts)
+            output_text = "\n\n".join(parts)
 
         message = f"Output node collected results from {len(incoming_map)} incoming sources."
         return output_text, {"status": "completed", "message": message}

@@ -17,8 +17,9 @@ class AgentNodeExecutor(NodeExecutor):
         if not provider:
             return "", {"status": "error", "message": f"Agent provider '{provider_name}' not found."}
 
-        result, tool_calls = await provider.run(config, incoming, mcp_registry=registry, available_tools=available_tools)
+        result, tool_calls, sub_agent_calls = await provider.run(config, incoming, mcp_registry=registry, available_tools=available_tools)
         context["stats"]["agentCalls"] += 1
         context["stats"]["toolCalls"] += tool_calls
+        context["stats"]["subAgentCalls"] += sub_agent_calls
         message = f"Agent '{config.get('name') or provider_name}' executed successfully."
         return result, {"status": "completed", "message": message}

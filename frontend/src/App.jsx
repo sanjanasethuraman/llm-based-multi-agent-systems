@@ -915,7 +915,7 @@ function WorkflowNode({ data, selected }) {
         <span>{NODE_TYPES[node.type] || node.type}</span>
         {node.type === "agent" && <span>{node.config?.provider || "mock"}</span>}
         {node.type === "tool" && <span>{node.config?.toolName || "unselected"}</span>}
-        {node.type === "sub_agent" && <span>{node.config?.toolId || "unselected"}</span>}
+        {node.type === "sub_agent" && <span>{node.config?.name || "unknown"}</span>}
       </div>
       {details && (
         <div className="node-retrieval-summary">
@@ -1788,13 +1788,13 @@ function WorkflowStatsPanel({ stats, retrievals }) {
     { label: "Workflow runtime", value: stats?.runtimeMs, unit: "ms", key: "runtimeMs" },
     { label: "Nodes executed", value: stats?.nodesExecuted, unit: "", key: "nodesExecuted" },
     { label: "Agent calls", value: stats?.agentCalls, unit: "", key: "agentCalls" },
+    { label: "Sub-Agent calls", value: stats?.subAgentCalls, unit: "", key: "subAgentCalls" },
     { label: "Tool calls", value: stats?.toolCalls, unit: "", key: "toolCalls" },
     { label: "Retriever calls", value: stats?.retrieverCalls, unit: "", key: "retrieverCalls" },
     { label: "Retrieved chunks", value: retrievedChunks, unit: "", key: "retrievedChunks" },
     { label: "Retriever nodes", value: retrieverNodes, unit: "", key: "retrieverNodes" },
     { label: "Collections retrieved", value: retrievalCollections, unit: "", key: "retrievalCollections" },
     { label: "Hit retrievals", value: retrievalsWithMatches, unit: "", key: "retrievalsWithMatches" },
-    { label: "MCP calls", value: stats?.mcpCalls, unit: "", key: "mcpCalls" },
     { label: "Tokens est.", value: stats?.estimatedTokens, unit: "", key: "estimatedTokens" },
   ];
 
@@ -1831,13 +1831,13 @@ function WorkflowStatsPanel({ stats, retrievals }) {
           {selected.key === "runtimeMs" && "Total time required to execute the workflow."}
           {selected.key === "nodesExecuted" && "The number of nodes that ran in this workflow execution."}
           {selected.key === "agentCalls" && "How many agent nodes triggered language model calls."}
+          {selected.key === "subAgentCalls" && "How many sub agent nodes were triggered."}
           {selected.key === "toolCalls" && "Count of tool nodes executed during the workflow."}
           {selected.key === "retrieverCalls" && "Retriever nodes that fetched context from the vector store."}
           {selected.key === "retrievedChunks" && "Total matched chunks returned by retriever nodes."}
           {selected.key === "retrieverNodes" && "Number of retriever nodes that participated in this run."}
           {selected.key === "retrievalCollections" && "Distinct vector collections queried during retrieval."}
           {selected.key === "retrievalsWithMatches" && "Retriever executions that returned at least one matched chunk."}
-          {selected.key === "mcpCalls" && "MCP tool invocations made during execution."}
           {selected.key === "estimatedTokens" && "Rough total token usage estimated from generated and retrieved text."}
         </p>
       </div>
