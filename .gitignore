@@ -9,3 +9,4 @@ data/
 generated/
 .env
 .env.local
+logs/

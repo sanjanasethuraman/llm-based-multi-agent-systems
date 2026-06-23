@@ -2,6 +2,9 @@ from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 from mcp.client.streamable_http import streamable_http_client
 from httpx import AsyncClient
+import logging
+
+logger = logging.getLogger(__name__)
 
 class McpToolClient:
     """Wraps an MCP stdio server. Call .call_tool() to call a tool on the server."""
@@ -45,8 +48,19 @@ class McpToolClient:
         return self
     
     async def __aexit__(self, *args):
-        await self._session.__aexit__(*args)
-        await self._streams.__aexit__(*args)
+        # Close the MCP session first. Wrap stream close in try/except
+        # because stdio_client/anyio may raise cancel-scope-related
+        # RuntimeErrors when closed from a different task context; log
+        # and continue cleanup rather than raising.
+        try:
+            await self._session.__aexit__(*args)
+        except Exception as e:
+            logger.warning(f"Error closing MCP session: {e}")
+
+        try:
+            await self._streams.__aexit__(*args)
+        except Exception as e:
+            logger.warning(f"Error closing streams: {e}")
 
     async def list_tools(self) -> list[dict]:
         """Returns all tools the server exposes — name, description, schema."""

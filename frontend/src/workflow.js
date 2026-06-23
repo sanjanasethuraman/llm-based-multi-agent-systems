@@ -1,7 +1,7 @@
 export const NODE_TYPES = {
   input: "Input",
   agent: "Agent",
-  mcp_tool: "MCP Tool",
+  sub_agent: "Sub-Agent",
   retriever: "Retriever",
   vector_db: "Vector DB",
   tool: "Tool",
@@ -109,12 +109,16 @@ const DEFAULT_CONFIGS = {
     baseUrl: "http://127.0.0.1:11434",
   },
   tool: { name: "Tool", toolType: "echo" },
-  mcp_tool: {
-    name: "MCP Tool",
-    server: "demo",
-    toolId: "demo.lookup",
-    arguments: "{\n  \"topic\": \"visual multi-agent systems\"\n}",
-    includeInput: true,
+  sub_agent: {
+    name: "Sub-Agent",
+    provider: "mock",
+    model: "llama3.2:1b",
+    baseUrl: "http://127.0.0.1:11434",
+    huggingFaceToken: "",
+    maxNewTokens: 512,
+    temperature: 0.2,
+    think: false,
+    systemPrompt: "You are a helpful assistant.",
   },
   output: {},
 };
@@ -224,7 +228,7 @@ export function validateWorkflow(workflow) {
         warnings.push(`Node ${node.label || node.id} selects FAISS, which is scaffolded but not implemented.`);
       }
     }
-    if (node.type === "agent") {
+    if (node.type === "agent" || node.type === "sub_agent") {
       const provider = node.config?.provider || "mock";
       if (!VALID_AGENT_PROVIDERS.has(provider)) {
         errors.push(`Agent ${node.label || node.id} has unsupported provider: ${provider}.`);
@@ -240,21 +244,6 @@ export function validateWorkflow(workflow) {
           warnings.push(
             `Agent ${node.label || node.id} uses Hugging Face without a saved token; the backend will look for HF_TOKEN or HUGGING_FACE_API_TOKEN.`,
           );
-        }
-      }
-    }
-    if (node.type === "mcp_tool") {
-      if (!node.config?.toolId && !node.config?.toolName) {
-        warnings.push(`MCP tool ${node.label || node.id} has no tool selected.`);
-      }
-      if (node.config?.arguments) {
-        try {
-          const parsedArguments = JSON.parse(node.config.arguments);
-          if (!parsedArguments || Array.isArray(parsedArguments) || typeof parsedArguments !== "object") {
-            errors.push(`MCP tool ${node.label || node.id} arguments must be a JSON object.`);
-          }
-        } catch (error) {
-          errors.push(`MCP tool ${node.label || node.id} has invalid arguments JSON: ${error.message}.`);
         }
       }
     }

@@ -9,7 +9,10 @@ import threading
 from pathlib import Path
 import time
 from urllib.parse import parse_qs, urlparse
+from backend.logging_config import setup_logging
+import logging
 
+logger = logging.getLogger(__name__)
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
@@ -392,4 +395,6 @@ def create_server(host, preferred_port):
 
 
 if __name__ == "__main__":
+    setup_logging("server")
+    logger.info("Starting server...")
     main()

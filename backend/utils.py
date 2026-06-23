@@ -102,7 +102,7 @@ def preview_text(text, limit=220):
     return cleaned[:limit] + "..."
 
 def get_available_tools(node_id, edges, nodes) -> list[dict]:
-    """Return a list of server_id & tool_name for tool nodes directly outgoing from `node_id`."""
+    """Return a list of server_id & tool_name for tool & sub-agent nodes directly outgoing from `node_id`."""
     tools = []
     for edge in edges:
         if edge["source"] != node_id:
@@ -115,13 +115,24 @@ def get_available_tools(node_id, edges, nodes) -> list[dict]:
                 if isinstance(n, dict) and n.get("id") == edge["target"]:
                     target_node = n
                     break
-        if not target_node or target_node.get("type") != "tool":
+        if not target_node or (target_node.get("type") != "tool" and target_node.get("type") != "sub_agent"):
             continue
-        config = target_node.get("config", {})
-        tools.append({
-            "server_id": config.get("serverId", "internal"),
-            "tool_name": config.get("toolName"),
-        })
+        if target_node.get("type") == "tool":
+            config = target_node.get("config", {})
+            tools.append({
+                "type": "tool",
+                "server_id": config.get("serverId", "internal"),
+                "tool_name": config.get("toolName"),
+            })
+        elif target_node.get("type") == "sub_agent":
+            config = target_node.get("config", {})
+            tools.append({
+                "type": "sub_agent",
+                "server_id": f"sub-agent-{target_node.get("id")}",
+                "tool_name": f"run_{config.get('name', 'agent')}",
+                "node_id": target_node.get("id"),
+                "config": config
+            })
     return tools
 
 def is_tool_managed_by_agent(node_id, edges, nodes):
