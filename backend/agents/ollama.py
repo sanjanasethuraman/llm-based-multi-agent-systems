@@ -1,7 +1,5 @@
 from .base import AgentProvider
 import json
-import asyncio
-from urllib import request, error
 from ollama import chat, ChatResponse
 import logging
 
@@ -60,7 +58,7 @@ class OllamaProvider(AgentProvider):
                     tool_map[tool.name] = (server_id, client)
         
         for _ in range(self.MAX_ITERATIONS):
-            logger.info(f"Calling Ollama model '{model}' with messages: {messages} and tools: {ollama_tools}")
+            logger.info(f"{config.get("name")} calling Ollama model '{model}' with messages: {messages} and tools: {ollama_tools}")
             response: ChatResponse = chat(
                 model=model,
                 messages=messages,
