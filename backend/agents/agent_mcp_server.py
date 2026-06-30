@@ -46,7 +46,7 @@ async def _run_agent(node_id: str, agent_config: dict, edges: list[dict], nodes:
             registry._clients = clients
 
             provider = get_agent_provider(agent_config.get("provider", "mock"))
-            result, _ = await provider.run(
+            result, _, _ = await provider.run(
                 config=agent_config,
                 incoming=user_input,
                 mcp_registry=registry,

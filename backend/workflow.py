@@ -160,6 +160,7 @@ async def run_workflow(workflow, mcp_registry: McpClientRegistry):
         "retrieverCalls": 0,
         "mcpCalls": 0,
         "estimatedTokens": 0,
+        "subAgentCalls": 0,
     }
 
     context = {
