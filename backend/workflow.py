@@ -2,12 +2,19 @@ import json
 import sys
 import time
 import inspect
+import logging
+import subprocess
+import asyncio
+import httpx
+import socket
 from collections import defaultdict
 from pprint import pformat
 
 from backend.nodes import get_node_executor
 from backend.utils import topological_order, preview_text
 from backend.mcp_registry import McpClientRegistry, McpServerConfig
+
+logger = logging.getLogger(__name__)
 
 VALID_NODE_TYPES = {"input", "agent", "tool", "output", "retriever", "vector_db", "sub_agent"}
 VALID_AGENT_PROVIDERS = {"mock", "ollama", "huggingface", "api"}
@@ -221,6 +228,16 @@ async def run_workflow(workflow, mcp_registry: McpClientRegistry):
     final_output = "\n\n".join(values.get(node_id, "") for node_id in nodes if nodes[node_id].get("type") == "output")
     runtime_ms = round((time.perf_counter() - started) * 1000, 2)
 
+    await asyncio.sleep(0.5)  # allow sub-agent servers to finish any pending requests
+    for server_id, proc in list(mcp_registry._processes.items()):
+        proc.terminate()
+        logger.info(f"Terminated sub-agent {server_id} pid={proc.pid}")
+    mcp_registry._processes.clear()
+
+    for server_id in [sid for sid in mcp_registry._clients if sid.startswith("sub-agent-")]:
+        mcp_registry._clients.pop(server_id, None)
+        mcp_registry._configs.pop(server_id, None)
+
     return {
         "output": final_output,
         "logs": context["nodeLogs"],
@@ -245,30 +262,77 @@ def log_item(node_id, node_type, message, status="completed"):
         "time": round(time.time(), 3),
     }
 
-async def setup_sub_agent_servers(nodes, edges, mcp_registry: McpClientRegistry):
-    for node in nodes.values():
-        if node.get("type") != "sub_agent":
-            continue
-        node_id = node.get("id")
-        config = node.get("config")
-        server_id = f"sub-agent-{node_id}"
-        if server_id not in mcp_registry.all_clients().keys():
-            mcp_registry.add_server(McpServerConfig(
-                id=server_id,
-                label=config.get("name", node.get("label")),
-                transport="stdio",
-                command=sys.executable,
-                args=[
-                    "-m",
-                    "backend.agents.agent_mcp_server",
-                    json.dumps(node_id),
-                    json.dumps(config),
-                    json.dumps(edges),
-                    json.dumps(nodes)
-                ]
-            ))
-            await mcp_registry.connect(server_id=server_id)
+def find_free_port() -> int:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind(("127.0.0.1", 0))
+        return s.getsockname()[1]
 
+
+async def _wait_for_port(port: int, timeout: float = 15.0):
+    deadline = asyncio.get_event_loop().time() + timeout
+    async with httpx.AsyncClient() as client:
+        while asyncio.get_event_loop().time() < deadline:
+            try:
+                await client.get(f"http://127.0.0.1:{port}/mcp", timeout=1.0)
+                return
+            except Exception:
+                await asyncio.sleep(0.2)
+    raise TimeoutError(f"Sub-agent on port {port} did not start within {timeout}s")
+
+
+async def setup_sub_agent_servers(nodes: dict, edges: list, mcp_registry):
+    """
+    Scan all nodes for sub_agent type.
+    Spawn each as an HTTP MCP server on a free port.
+    Register in mcp_registry so orchestrator agents can call them.
+    """
+    from backend.utils import get_available_tools
+    from backend.mcp_registry import McpServerConfig
+
+    for node in nodes.values():
+        if node["type"] != "sub_agent":
+            continue
+
+        node_id = node["id"]
+        config = node.get("config", {})
+        server_id = f"sub-agent-{node_id}"
+
+        # skip if already connected (e.g. workflow re-run)
+        if server_id in mcp_registry._clients:
+            logger.info(f"Sub-agent {server_id} already connected, skipping.")
+            continue
+
+        port = find_free_port()
+
+        logger.info(f"Spawning sub-agent '{config.get('name')}' ({node_id}) on port {port}")
+
+        proc = subprocess.Popen([
+            sys.executable, "-m", "backend.agents.agent_mcp_server",
+            node_id,
+            json.dumps(config),
+            json.dumps(edges),
+            json.dumps(list(nodes.values())),  # pass as list
+            str(port),
+        ])
+
+        mcp_registry.register_process(server_id, proc)
+
+        try:
+            await _wait_for_port(port)
+        except TimeoutError:
+            logger.error(f"Sub-agent {server_id} failed to start on port {port}")
+            proc.terminate()
+            continue
+
+        mcp_registry.add_server(McpServerConfig(
+            id=server_id,
+            label=config.get("name", node_id),
+            transport="http",
+            url=f"http://127.0.0.1:{port}/mcp",
+        ))
+
+        await mcp_registry.connect(server_id)
+        logger.info(f"Sub-agent {server_id} ready at http://127.0.0.1:{port}/mcp")
 
 def generate_python(workflow):
     serialized = pformat(workflow, width=100, sort_dicts=False)

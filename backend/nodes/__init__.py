@@ -4,7 +4,6 @@ from .agent import AgentNodeExecutor
 from .tool import ToolNodeExecutor
 from .retriever import RetrieverNodeExecutor
 from .vector_db import VectorDBNodeExecutor
-from .mcp_tool import MCPToolNodeExecutor
 
 NODE_EXECUTORS = {
     "input": InputNodeExecutor(),

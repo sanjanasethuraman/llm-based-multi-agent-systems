@@ -6,16 +6,19 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+
 class McpToolClient:
-    """Wraps an MCP stdio server. Call .call_tool() to call a tool on the server."""
 
     def __init__(self, server_script: str = None):
-        self._config = {"transport": "stdio", "command": "python3", "args": ["-m", server_script]}
-        self._session: None
+        self._config = {
+            "transport": "stdio",
+            "command": "python3",
+            "args": ["-m", server_script],
+        }
+        self._session = None
 
     @classmethod
     def from_config(cls, config):
-        """Create from a McpServerConfig."""
         instance = cls.__new__(cls)
         instance._config = {
             "transport": config.transport,
@@ -35,41 +38,41 @@ class McpToolClient:
             )
             self._streams = stdio_client(params)
             read, write = await self._streams.__aenter__()
+            self._session = ClientSession(read, write)
+            await self._session.__aenter__()
+            await self._session.initialize()
         else:
-            asyncClient =AsyncClient(headers=self._config["headers"])
+            async_client = AsyncClient(headers=self._config["headers"])
             self._streams = streamable_http_client(
                 self._config["url"],
-                http_client=asyncClient,
+                http_client=async_client,
             )
             read, write, _ = await self._streams.__aenter__()
-        self._session = ClientSession(read, write)
-        await self._session.__aenter__()
-        await self._session.initialize()
+            self._session = ClientSession(read, write)
+            await self._session.__aenter__()
+            await self._session.initialize()
         return self
-    
+
     async def __aexit__(self, *args):
-        # Close the MCP session first. Wrap stream close in try/except
-        # because stdio_client/anyio may raise cancel-scope-related
-        # RuntimeErrors when closed from a different task context; log
-        # and continue cleanup rather than raising.
+        if self._config["transport"] == "http":
+            logger.debug("HTTP client: skipping DELETE on exit")
+            return
+        
         try:
             await self._session.__aexit__(*args)
         except Exception as e:
-            logger.warning(f"Error closing MCP session: {e}")
-
+            logger.debug(f"Session cleanup: {e}")
         try:
             await self._streams.__aexit__(*args)
         except Exception as e:
-            logger.warning(f"Error closing streams: {e}")
+            logger.debug(f"Stream cleanup: {e}")
 
-    async def list_tools(self) -> list[dict]:
-        """Returns all tools the server exposes — name, description, schema."""
+    async def list_tools(self) -> list:
         result = await self._session.list_tools()
         return result.tools
 
-    async def call_tool(self, name: str, arguments: dict):
+    async def call_tool(self, name: str, arguments: dict) -> str:
         result = await self._session.call_tool(name, arguments)
-        # result.content is a list of content blocks; extract text
         return "\n".join(
             block.text for block in result.content if hasattr(block, "text")
         )
