@@ -2,6 +2,7 @@ from .base import AgentProvider
 import json
 from ollama import chat, ChatResponse
 import logging
+import asyncio
 
 logger = logging.getLogger(__name__)
 
@@ -23,18 +24,19 @@ class OllamaProvider(AgentProvider):
         })
 
         if isinstance(incoming, dict):
-            type = "user"
+            role_type = "user"
+            text = ""
             for src, item in incoming.items():
                 text = item.get("text") if isinstance(item, dict) else str(item)
                 label = item.get("label") if isinstance(item, dict) else None
                 ntype = item.get("type") if isinstance(item, dict) else None
                 if ntype == "input":
-                    type = "user"
+                    role_type = "user"
                 elif ntype == "agent":
-                    type = "assistant"
+                    role_type = "assistant"
                 elif ntype == "tool":
-                    type = "tool"
-            messages.append({"role": type, "content": text})
+                    role_type = "tool"
+            messages.append({"role": role_type, "content": text})
         else:
             # fallback for legacy string/list incoming formats
             if isinstance(incoming, str):
@@ -58,7 +60,7 @@ class OllamaProvider(AgentProvider):
                     tool_map[tool.name] = (server_id, client)
         
         for _ in range(self.MAX_ITERATIONS):
-            logger.info(f"{config.get("name")} calling Ollama model '{model}' with messages: {messages} and tools: {ollama_tools}")
+            logger.info(f"{config.get('name')} calling Ollama model '{model}' with messages: {messages} and tools: {ollama_tools}")
             response: ChatResponse = chat(
                 model=model,
                 messages=messages,
@@ -108,7 +110,14 @@ class OllamaProvider(AgentProvider):
                         "tool_name": name,
                     })
 
-                    result = await client.call_tool(name, tool_call.function.arguments or {})
+                    try:
+                        result = await asyncio.wait_for(
+                            client.call_tool(name, tool_call.function.arguments or {}),
+                            timeout=120.0
+                        )
+                    except asyncio.TimeoutError:
+                        logger.error(f"Tool call {name} timed out")
+                        result = {"error": "Tool call timed out"}
                     
                     messages.append({
                         "role": "tool",

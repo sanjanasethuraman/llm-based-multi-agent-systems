@@ -3,6 +3,8 @@ import errno
 import json
 import mimetypes
 import os
+import socket
+import subprocess
 import sys
 import asyncio
 import threading
@@ -71,21 +73,21 @@ def _start_background_loop():
     asyncio.set_event_loop(_loop)
     _loop.run_forever()
 
-async def _init_mcp_clients():
-    registry.add_server(McpServerConfig(
-        id="internal",
-        label="Internal Tools",
-        transport="stdio",
-        command=sys.executable,
-        args=["-m", "backend.tools.run_mcp_server"]
-    ))
-    try:
-        await registry.connect_all()
-    except ModuleNotFoundError as exc:
-        print(f"MCP tools unavailable during startup: {exc}")
-    except Exception as exc:
-        print(f"MCP tools failed to connect during startup: {exc}")
+def _start_internal_mcp_server() -> int:
+    """Start the internal MCP server as HTTP and return its port."""
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind(("127.0.0.1", 0))
+        port = s.getsockname()[1]
 
+    proc = subprocess.Popen([
+        sys.executable, "-m", "backend.tools.run_mcp_server",
+        "http", str(port),
+    ])
+
+    # store so we can terminate on shutdown
+    _internal_mcp_proc = proc
+    os.environ["INTERNAL_MCP_PORT"] = str(port)
+    return port, proc
 
 class AppHandler(BaseHTTPRequestHandler):
 
@@ -386,6 +388,10 @@ class AppHandler(BaseHTTPRequestHandler):
 def main():
     init_db()
 
+    # start internal MCP server as HTTP process
+    internal_port, internal_proc = _start_internal_mcp_server()
+    logger.info(f"Internal MCP server started on port {internal_port}")
+
     # Start persistent event loop in background thread
     thread = threading.Thread(target=_start_background_loop, daemon=True)
     thread.start()
@@ -393,22 +399,36 @@ def main():
     while _loop is None:
         time.sleep(0.01)
     registry.set_loop(_loop)
+
+    # connect main registry to internal MCP server via HTTP
+    async def _init():
+        import asyncio
+        await asyncio.sleep(1.0) # wait for internal MCP server to start
+        registry.add_server(McpServerConfig(
+            id="internal",
+            label="Internal Tools",
+            transport="http",
+            url=f"http://127.0.0.1:{internal_port}/mcp",
+        ))
+        await registry.connect_all()
     
-    future = asyncio.run_coroutine_threadsafe(_init_mcp_clients(), _loop)
-    future.result(timeout=10)
+    future = asyncio.run_coroutine_threadsafe(_init(), _loop)
+    future.result(timeout=15)
+    logger.info("MCP registry initialized and connected to internal server.")
 
     host = os.environ.get("VISUAL_MAS_HOST", "127.0.0.1")
     preferred_port = int(os.environ.get("VISUAL_MAS_PORT", "8000"))
     server, port = create_server(host, preferred_port)
-    print(f"Serving prototype at http://{host}:{port}")
+    logger.info(f"Serving at http://{host}:{port}")
     try:
         server.serve_forever()
     except KeyboardInterrupt:
-        print("\nServer stopped.")
+        pass
     finally:
-        server.server_close()
-        if _loop and _loop.is_running():
-            _loop.call_soon_threadsafe(_loop.stop)
+        future = asyncio.run_coroutine_threadsafe(registry.shutdown(), _loop)
+        future.result(timeout=5)
+        internal_proc.terminate()
+        logger.info("Server shutdown complete.")
 
 
 def create_server(host, preferred_port):
