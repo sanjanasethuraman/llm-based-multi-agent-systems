@@ -109,7 +109,6 @@ function WorkflowApp() {
   const [generatedCode, setGeneratedCode] = useState("Click Generate Python.");
   const [nodeResults, setNodeResults] = useState({});
   const [retrievals, setRetrievals] = useState([]);
-  const [mcpCalls, setMcpCalls] = useState([]);
   const [mcpTools, setMcpTools] = useState([]);
   const [mcpServers, setMcpServers] = useState([]);
   const [examples, setExamples] = useState([]);
@@ -437,7 +436,6 @@ function WorkflowApp() {
       updateTabWorkflow(activeTabId, nextWorkflow);
       setNodeResults({});
       setRetrievals([]);
-      setMcpCalls([]);
       setSelected({ kind: "node", id: nextWorkflow.nodes[0]?.id || "" });
       setStatusMessage(`Loaded example: ${result.label}.`);
     } catch (error) {
@@ -457,7 +455,6 @@ function WorkflowApp() {
       updateTabWorkflow(activeTabId, nextWorkflow);
       setNodeResults({});
       setRetrievals([]);
-      setMcpCalls([]);
       setSelected({ kind: "node", id: nextWorkflow.nodes[0]?.id || "" });
       setStatusMessage(`Loaded workflow from ${result.path}.`);
     } catch (error) {
@@ -497,7 +494,6 @@ function WorkflowApp() {
       setLogs([]);
       setStats(null);
       setRetrievals([]);
-      setMcpCalls([]);
       setNodeResults(
         Object.fromEntries(
           workflow.nodes.map((node) => [
@@ -512,7 +508,6 @@ function WorkflowApp() {
       setLogs(result.logs || []);
       setStats(result.stats || null);
       setRetrievals(result.retrievals || []);
-      setMcpCalls(result.mcpCalls || []);
       setNodeResults(result.nodeResults || {});
       setStatusMessage("Workflow run completed.");
     } catch (error) {
@@ -873,9 +868,8 @@ function WorkflowApp() {
         onRefresh={refreshMcpTools}
       />
 
-      <ResultPanels output={output} logs={logs} stats={stats} nodeResults={nodeResults} retrievals={retrievals} />
+      <ResultPanels output={output} logs={logs} stats={stats} nodeResults={nodeResults} retrievals={retrievals} workflow={workflow}/>
       <RetrievalPanel retrievals={retrievals} />
-      <McpCallsPanel calls={mcpCalls} />
 
       {comparisonReports.length > 0 && (
         <section className="comparison-panel">
@@ -1545,20 +1539,24 @@ function RagPanel({
   );
 }
 
-function ResultPanels({ output, logs, stats, nodeResults, retrievals }) {
+function ResultPanels({ output, logs, stats, nodeResults, retrievals , workflow}) {
   const [selectedLogFilter, setSelectedLogFilter] = useState("all");
   const [searchTerm, setSearchTerm] = useState("");
-  const [showFullOutput, setShowFullOutput] = useState(false);
+  const [showFullOutput, setShowFullOutput] = useState(true);
   const [copyStatus, setCopyStatus] = useState("");
   const [resultsTab, setResultsTab] = useState("final");
 
   const nodes = useMemo(
     () =>
-      Object.entries(nodeResults || {}).map(([id, result]) => ({
-        id,
-        ...result,
-      })),
-    [nodeResults],
+      Object.entries(nodeResults || {}).map(([id, result]) => {
+        const node = workflow.nodes.find((n) => n.id === id);
+        return {
+          id,
+          label: node?.label,
+          ...result,
+        };
+      }),
+    [nodeResults, workflow.nodes],
   );
 
   const nodesDisplayed = nodes.filter((node) => node.outputPreview || node.message || node.status);
@@ -1599,7 +1597,7 @@ function ResultPanels({ output, logs, stats, nodeResults, retrievals }) {
     }
   };
 
-  const outputPreview = showFullOutput ? output : output?.slice(0, 1200) || "";
+  const outputPreview = output;
   const canShowMore = output && output.length > 1200;
 
   return (
@@ -1674,8 +1672,8 @@ function ResultPanels({ output, logs, stats, nodeResults, retrievals }) {
                 <article key={node.id} className="node-result-item">
                   <div className="node-result-header">
                     <div>
-                      <strong>{node.id}</strong>
-                      <span>{node.type}</span>
+                      <strong>{node.label}</strong>
+                      <span>{node.type}: {node.id}</span>
                     </div>
                     <StatusBadge status={node.status || "idle"} />
                   </div>
@@ -2149,31 +2147,6 @@ function RetrievalPanel({ retrievals }) {
           ))}
         </div>
       )}
-    </section>
-  );
-}
-
-function McpCallsPanel({ calls }) {
-  return (
-    <section className="mcp-panel">
-      <div className="section-header">
-        <div>
-          <h2>MCP Calls</h2>
-          <p>{calls.length ? `${calls.length} MCP tool call(s) executed.` : "No MCP tool run yet."}</p>
-        </div>
-      </div>
-      <div className="mcp-call-grid">
-        {calls.map((call, index) => (
-          <article key={`${call.nodeId}-${call.toolId}-${call.timestamp || index}`}>
-            <div>
-              <strong>{call.toolId}</strong>
-              <span>{call.server || "demo"}</span>
-              <span>{call.nodeId}</span>
-            </div>
-            <pre>{JSON.stringify({ arguments: call.arguments, result: call.result }, null, 2)}</pre>
-          </article>
-        ))}
-      </div>
     </section>
   );
 }

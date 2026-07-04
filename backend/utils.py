@@ -97,7 +97,7 @@ def estimate_tokens(text):
 
 def preview_text(text, limit=220):
     cleaned = " ".join(str(text).split())
-    if len(cleaned) <= limit:
+    if limit is None or len(cleaned) <= limit:
         return cleaned
     return cleaned[:limit] + "..."
 
