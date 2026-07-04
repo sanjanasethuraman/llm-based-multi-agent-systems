@@ -1756,7 +1756,7 @@ function ResultPanels({ output, logs, stats, nodeResults, retrievals , workflow}
       </section>
 
       <WorkflowStatsPanel stats={stats} retrievals={retrievals} />
-      <NodeStatsPanel nodeResults={nodeResults} stats={stats} />
+      <NodeStatsPanel nodeResults={nodeResults} stats={stats} workflow={workflow} />
     </section>
   );
 }
@@ -1843,14 +1843,19 @@ function WorkflowStatsPanel({ stats, retrievals }) {
   );
 }
 
-function NodeStatsPanel({ nodeResults, stats }) {
+function NodeStatsPanel({ nodeResults, stats, workflow }) {
   const nodes = useMemo(
     () =>
-      Object.entries(nodeResults || {}).map(([id, result]) => ({
-        id,
-        ...result,
-      })),
-    [nodeResults],
+      Object.entries(nodeResults || {}).map(([id, result]) => {
+        const node = workflow.nodes.find((n) => n.id === id);
+        return {
+          id,
+          label: node?.label,
+          type: node?.type,
+          ...result,
+        };
+      }),
+    [nodeResults, workflow.nodes],
   );
 
   const [activeTab, setActiveTab] = useState("overview");
@@ -1904,10 +1909,10 @@ function NodeStatsPanel({ nodeResults, stats }) {
                 onMouseLeave={() => setFocusedNode(null)}
               >
                 <div className="node-stat-summary-header">
-                  <strong>{node.id}</strong>
+                  <strong>{node.label}</strong>
                   <StatusBadge status={node.status || "idle"} />
                 </div>
-                <span>{node.type}</span>
+                <span>{node.type}: {node.id}</span>
                 <div className="node-stat-summary-values">
                   <strong>{(node.durationMs || 0).toFixed(2)}ms</strong>
                   <span>{node.outputPreview ? "Output available" : "No output"}</span>
@@ -1928,9 +1933,9 @@ function NodeStatsPanel({ nodeResults, stats }) {
               >
                 <span>{index + 1}</span>
                 <div>
-                  <strong>{node.id}</strong>
+                  <strong>{node.label}</strong>
                   <div className="node-ranking-meta">
-                    <span>{node.type}</span>
+                    <span>{node.type}: {node.id}</span>
                     <span>{(node.durationMs || 0).toFixed(2)}ms</span>
                   </div>
                 </div>
@@ -1963,8 +1968,8 @@ function NodeStatsPanel({ nodeResults, stats }) {
                 onMouseLeave={() => setFocusedNode(null)}
               >
                 <div className="chart-label">
-                  <strong>{node.id}</strong>
-                  <span>{node.type}</span>
+                  <strong>{node.label}</strong>
+                  <span>{node.type}: {node.id}</span>
                 </div>
                 <div className="chart-bar">
                   <div
@@ -2002,7 +2007,7 @@ function NodeStatsPanel({ nodeResults, stats }) {
           <span>Avg node duration</span>
         </div>
         <div className="stat-card">
-          <strong>{nodesSorted[0]?.id || "-"}</strong>
+          <strong>{nodesSorted[0]?.label || "-"}</strong>
           <span>Slowest node</span>
         </div>
       </div>
