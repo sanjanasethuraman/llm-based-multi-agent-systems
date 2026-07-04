@@ -208,7 +208,7 @@ async def run_workflow(workflow, mcp_registry: McpClientRegistry):
             "type": node["type"],
             "message": message,
             "durationMs": round((time.perf_counter() - node_started) * 1000, 2),
-            "outputPreview": preview_text(result),
+            "outputPreview": preview_text(result, limit=None),
             "matches": metadata.get("matches", []),
             "mcpCall": metadata.get("mcpCall"),
         }
