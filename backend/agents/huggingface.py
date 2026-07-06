@@ -18,6 +18,7 @@ class HuggingFaceProvider(AgentProvider):
         model = config.get("model") or DEFAULT_HF_MODEL
         token = get_huggingface_token(config)
         base_url = normalize_huggingface_base_url(config.get("baseUrl"))
+        prompt_input = stringify_incoming(incoming)
         payload = {
             "model": model,
             "messages": [
@@ -25,7 +26,7 @@ class HuggingFaceProvider(AgentProvider):
                     "role": "system",
                     "content": config.get("systemPrompt", "You are a helpful assistant."),
                 },
-                {"role": "user", "content": incoming},
+                {"role": "user", "content": prompt_input},
             ],
             "temperature": float(config.get("temperature", 0.2)),
             "max_tokens": int(config.get("maxNewTokens") or 512),
@@ -36,7 +37,7 @@ class HuggingFaceProvider(AgentProvider):
                 f"[{name} | huggingface unavailable]\n"
                 "No Hugging Face token was configured. Add a token in the agent settings "
                 "or set HF_TOKEN / HUGGING_FACE_API_TOKEN before starting the server."
-            )
+            ), 0, 0
 
         try:
             data = json.dumps(payload).encode("utf-8")
@@ -52,22 +53,22 @@ class HuggingFaceProvider(AgentProvider):
             with request.urlopen(req, timeout=120) as response:
                 result = json.loads(response.read().decode("utf-8"))
             text = parse_huggingface_chat_completion(result)
-            return text or f"[{name} | huggingface] Empty response from {model}."
+            return text or f"[{name} | huggingface] Empty response from {model}.", 0, 0
         except error.HTTPError as exc:
             detail = read_error_detail(exc)
             return (
                 f"[{name} | huggingface error]\n"
                 f"Model: {model}\n"
                 f"HTTP {exc.code}: {detail}"
-            )
+            ), 0, 0
         except error.URLError as exc:
             return (
                 f"[{name} | huggingface unavailable]\n"
                 f"Could not reach Hugging Face Inference API for model {model}.\n"
                 f"Details: {exc}"
-            )
+            ), 0, 0
         except Exception as exc:
-            return f"[{name} | huggingface error]\n{exc}"
+            return f"[{name} | huggingface error]\n{exc}", 0, 0
 
 
 def get_huggingface_token(config=None):
@@ -100,6 +101,20 @@ def parse_huggingface_chat_completion(result):
             message = choices[0].get("message") or {}
             return str(message.get("content") or choices[0].get("text") or "").strip()
     return ""
+
+
+def stringify_incoming(incoming):
+    if isinstance(incoming, dict):
+        parts = []
+        for item in incoming.values():
+            if isinstance(item, dict):
+                text = item.get("text")
+                if text:
+                    parts.append(str(text))
+            elif item:
+                parts.append(str(item))
+        return "\n\n".join(parts)
+    return str(incoming or "")
 
 
 def check_huggingface_status(model=None, token=None, base_url=None):

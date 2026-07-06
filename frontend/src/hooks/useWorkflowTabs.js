@@ -20,9 +20,12 @@ export function useWorkflowTabs(defaultWorkflow) {
 
   const createTab = useCallback((name = null) => {
     const newId = `workflow-${Date.now()}`;
+    const tabName = typeof name === 'string' && name.trim()
+      ? name.trim()
+      : `Workflow ${tabs.length + 1}`;
     const newTab = {
       id: newId,
-      name: name || `Workflow ${tabs.length + 1}`,
+      name: tabName,
       workflow: defaultWorkflow,
       createdAt: Date.now(),
       lastModified: Date.now(),

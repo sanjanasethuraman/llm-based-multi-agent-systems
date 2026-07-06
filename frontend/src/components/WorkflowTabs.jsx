@@ -71,7 +71,7 @@ export default function WorkflowTabs({
           </div>
         ))}
       </div>
-      <button className="add-tab-btn" onClick={onCreateTab} title="Create new workflow">
+      <button className="add-tab-btn" onClick={() => onCreateTab()} title="Create new workflow">
         <Plus size={16} />
       </button>
     </div>
