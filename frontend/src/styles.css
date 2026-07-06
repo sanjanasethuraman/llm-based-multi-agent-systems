@@ -4537,8 +4537,8 @@ pre {
 .log-list {
   display: grid;
   gap: 10px;
-  max-height: 360px;
   overflow: auto;
+  max-height: 40vh;
 }
 
 .log-entry {

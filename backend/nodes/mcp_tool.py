@@ -2,7 +2,7 @@ import json
 
 from .base import NodeExecutor
 from backend.mcp_registry import call_mcp_tool
-from backend.utils import collect_incoming
+from backend.utils import collect_incoming, log_node
 
 
 class MCPToolNodeExecutor(NodeExecutor):
@@ -21,6 +21,7 @@ class MCPToolNodeExecutor(NodeExecutor):
                 arguments["input"] = incoming
             call = call_mcp_tool(tool_id, arguments, incoming)
         except Exception as exc:
+            log_node(node["id"], context, str(exc), status="error", node_type=node.get("type"))
             return "", {"status": "error", "message": str(exc), "mcpCall": None}
 
         context["stats"]["mcpCalls"] += 1
@@ -29,6 +30,7 @@ class MCPToolNodeExecutor(NodeExecutor):
             "server": config.get("server", "demo"),
             **call,
         })
+        log_node(node["id"], context, f"MCP tool '{tool_id}' executed successfully.", status="completed", node_type=node.get("type"))
         return call["result"], {
             "status": "completed",
             "message": f"MCP tool '{tool_id}' executed successfully.",

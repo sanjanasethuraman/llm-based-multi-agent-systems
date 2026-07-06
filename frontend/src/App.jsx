@@ -27,6 +27,8 @@ import {
 
 import McpServersPanel from "./components/panels/McpServersPanel.jsx"
 import AppShell from "./components/AppShell.jsx"
+import LogsPanel from "./components/panels/LogsPanel.jsx"
+import StatusBadge from "./components/StatusBadge.jsx";
 import WorkflowTabs from "./components/WorkflowTabs.jsx"
 import ExecutionModeControl from "./components/ExecutionModeControl.jsx"
 import ComparisonReport from "./components/ComparisonReport.jsx"
@@ -1964,6 +1966,20 @@ function ResultPanels({ output, logs, stats, nodeResults, retrievals, selectedDi
   const [copyStatus, setCopyStatus] = useState("");
   const [resultsTab, setResultsTab] = useState("final");
 
+  const logCounts = useMemo(() => {
+    return Object.values(logs || []).reduce(
+      (acc, nodeLogs) => {
+        nodeLogs.forEach((log) => {
+          const status = log.status || "completed";
+          acc[status] = (acc[status] || 0) + 1;
+          acc.all += 1;
+        });
+        return acc;
+      },
+      { all: 0, completed: 0, info: 0, warning: 0, error: 0 },
+    );
+  }, [logs]);
+
   const nodes = useMemo(
     () =>
       Object.entries(nodeResults || {}).map(([id, result]) => {
@@ -1978,31 +1994,6 @@ function ResultPanels({ output, logs, stats, nodeResults, retrievals, selectedDi
   );
 
   const nodesDisplayed = nodes.filter((node) => node.outputPreview || node.message || node.status);
-
-  const logCounts = useMemo(() => {
-    return logs.reduce(
-      (acc, log) => {
-        const status = log.status || "completed";
-        acc[status] = (acc[status] || 0) + 1;
-        acc.all += 1;
-        return acc;
-      },
-      { all: 0, completed: 0, warning: 0, error: 0 },
-    );
-  }, [logs]);
-
-  const filteredLogs = useMemo(() => {
-    return logs.filter((log) => {
-      if (selectedLogFilter !== "all" && (log.status || "completed") !== selectedLogFilter) {
-        return false;
-      }
-      if (!searchTerm.trim()) {
-        return true;
-      }
-      const needle = searchTerm.toLowerCase();
-      return `${log.nodeId} ${log.message} ${log.type || ""}`.toLowerCase().includes(needle);
-    });
-  }, [logs, selectedLogFilter, searchTerm]);
 
   const handleCopyOutput = async () => {
     try {

@@ -1,3 +1,4 @@
+import time
 from collections import defaultdict, deque
 from .tools import get_tool
 
@@ -100,6 +101,18 @@ def preview_text(text, limit=220):
     if limit is None or len(cleaned) <= limit:
         return cleaned
     return cleaned[:limit] + "..."
+
+def log_node(node_id, context, message, status="info", node_type=None):
+    if "nodeLogs" not in context:
+        context["nodeLogs"] = defaultdict(list)
+    context["nodeLogs"].setdefault(node_id, []).append({
+        "nodeId": node_id,
+        "type": node_type,
+        "status": status,
+        "message": message,
+        "time": round(time.time(), 3),
+    })
+    return context["nodeLogs"][node_id]
 
 def get_available_tools(node_id, edges, nodes) -> list[dict]:
     """Return a list of server_id & tool_name for tool & sub-agent nodes directly outgoing from `node_id`."""

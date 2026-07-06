@@ -1,5 +1,5 @@
 from .base import NodeExecutor
-from backend.utils import collect_incoming, merge_vector_db_config
+from backend.utils import collect_incoming, merge_vector_db_config, log_node
 from backend.rag import retrieve_context
 
 class RetrieverNodeExecutor(NodeExecutor):
@@ -13,6 +13,7 @@ class RetrieverNodeExecutor(NodeExecutor):
         try:
             retrieval = retrieve_context(merged_config, query)
         except ValueError as exc:
+            log_node(node["id"], context, str(exc), status="error", node_type=node.get("type"))
             return "", {"status": "error", "message": str(exc), "matches": []}
 
         matches = retrieval.get("matches", [])
@@ -42,4 +43,5 @@ class RetrieverNodeExecutor(NodeExecutor):
             f"Retriever '{config.get('name', 'unnamed')}' used {mode} retrieval "
             f"and found {len(matches)} matches."
         )
+        log_node(node["id"], context, message, status="completed", node_type=node.get("type"))
         return result, {"status": "completed", "message": message, "matches": matches}
