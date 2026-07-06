@@ -151,6 +151,7 @@ async def run_workflow(workflow, mcp_registry: McpClientRegistry):
 
     values = {}
     logs = []
+    node_logs = defaultdict(list)
 
     node_results = {}
     retrievals = []
@@ -169,6 +170,7 @@ async def run_workflow(workflow, mcp_registry: McpClientRegistry):
         "edges": edges,
         "values": values,
         "logs": logs,
+        "nodeLogs": node_logs,
         "stats": stats,
         "retrievals": retrievals,
         "mcpCalls": [],
@@ -212,6 +214,7 @@ async def run_workflow(workflow, mcp_registry: McpClientRegistry):
             "outputPreview": preview_text(result, limit=None),
             "matches": metadata.get("matches", []),
             "mcpCall": metadata.get("mcpCall"),
+            "logs": context["nodeLogs"].get(node_id, []),
         }
         logs.append(log_item(node_id, node.get("type"), message or f"{node.get('type')} node executed.", status))
 
@@ -220,7 +223,7 @@ async def run_workflow(workflow, mcp_registry: McpClientRegistry):
 
     return {
         "output": final_output,
-        "logs": logs,
+        "logs": context["nodeLogs"],
         "stats": {
             **stats,
             "runtimeMs": runtime_ms,

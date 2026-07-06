@@ -37,6 +37,8 @@ import {
 } from "./workflow.js";
 
 import McpServersPanel from "./components/panels/McpServersPanel.jsx"
+import LogsPanel from "./components/panels/LogsPanel.jsx"
+import StatusBadge from "./components/StatusBadge.jsx";
 import WorkflowTabs from "./components/WorkflowTabs.jsx"
 import ExecutionModeControl from "./components/ExecutionModeControl.jsx"
 import ComparisonReport from "./components/ComparisonReport.jsx"
@@ -868,7 +870,7 @@ function WorkflowApp() {
         onRefresh={refreshMcpTools}
       />
 
-      <ResultPanels output={output} logs={logs} stats={stats} nodeResults={nodeResults} retrievals={retrievals} workflow={workflow}/>
+      <ResultPanels output={output} logs={logs} stats={stats} nodeResults={nodeResults} retrievals={retrievals} workflow={workflow} />
       <RetrievalPanel retrievals={retrievals} />
 
       {comparisonReports.length > 0 && (
@@ -1539,12 +1541,24 @@ function RagPanel({
   );
 }
 
-function ResultPanels({ output, logs, stats, nodeResults, retrievals , workflow}) {
-  const [selectedLogFilter, setSelectedLogFilter] = useState("all");
-  const [searchTerm, setSearchTerm] = useState("");
+function ResultPanels({ output, logs, stats, nodeResults, retrievals, workflow}) {
   const [showFullOutput, setShowFullOutput] = useState(true);
   const [copyStatus, setCopyStatus] = useState("");
   const [resultsTab, setResultsTab] = useState("final");
+
+  const logCounts = useMemo(() => {
+    return Object.values(logs || []).reduce(
+      (acc, nodeLogs) => {
+        nodeLogs.forEach((log) => {
+          const status = log.status || "completed";
+          acc[status] = (acc[status] || 0) + 1;
+          acc.all += 1;
+        });
+        return acc;
+      },
+      { all: 0, completed: 0, info: 0, warning: 0, error: 0 },
+    );
+  }, [logs]);
 
   const nodes = useMemo(
     () =>
@@ -1560,31 +1574,6 @@ function ResultPanels({ output, logs, stats, nodeResults, retrievals , workflow}
   );
 
   const nodesDisplayed = nodes.filter((node) => node.outputPreview || node.message || node.status);
-
-  const logCounts = useMemo(() => {
-    return logs.reduce(
-      (acc, log) => {
-        const status = log.status || "completed";
-        acc[status] = (acc[status] || 0) + 1;
-        acc.all += 1;
-        return acc;
-      },
-      { all: 0, completed: 0, warning: 0, error: 0 },
-    );
-  }, [logs]);
-
-  const filteredLogs = useMemo(() => {
-    return logs.filter((log) => {
-      if (selectedLogFilter !== "all" && (log.status || "completed") !== selectedLogFilter) {
-        return false;
-      }
-      if (!searchTerm.trim()) {
-        return true;
-      }
-      const needle = searchTerm.toLowerCase();
-      return `${log.nodeId} ${log.message} ${log.type || ""}`.toLowerCase().includes(needle);
-    });
-  }, [logs, selectedLogFilter, searchTerm]);
 
   const handleCopyOutput = async () => {
     try {
@@ -1691,70 +1680,7 @@ function ResultPanels({ output, logs, stats, nodeResults, retrievals , workflow}
           {copyStatus && <div className="copy-feedback">{copyStatus}</div>}
         </div>
       </section>
-
-      <section className="logs-panel">
-        <div className="section-header">
-          <div>
-            <h2>Logs</h2>
-            <p>Filter and search execution logs for better insight.</p>
-          </div>
-        </div>
-        <div className="log-toolbar">
-          <div className="log-filters">
-            {[
-              { key: "all", label: `All (${logCounts.all})` },
-              { key: "completed", label: `Done (${logCounts.completed})` },
-              { key: "warning", label: `Warn (${logCounts.warning})` },
-              { key: "error", label: `Error (${logCounts.error})` },
-            ].map((filter) => (
-              <button
-                key={filter.key}
-                type="button"
-                className={`filter-button ${selectedLogFilter === filter.key ? "active" : ""}`}
-                onClick={() => setSelectedLogFilter(filter.key)}
-              >
-                {filter.label}
-              </button>
-            ))}
-          </div>
-          <input
-            className="log-search"
-            placeholder="Search logs"
-            value={searchTerm}
-            onChange={(event) => setSearchTerm(event.target.value)}
-          />
-        </div>
-        <div className="log-summary-grid">
-          <div className="log-stat-card">
-            <strong>{filteredLogs.length}</strong>
-            <span>Shown</span>
-          </div>
-          <div className="log-stat-card">
-            <strong>{logCounts.error}</strong>
-            <span>Total errors</span>
-          </div>
-          <div className="log-stat-card">
-            <strong>{logCounts.warning}</strong>
-            <span>Total warnings</span>
-          </div>
-        </div>
-        <div className="log-list">
-          {filteredLogs.length ? (
-            filteredLogs.map((item, index) => (
-              <article key={`${item.nodeId}-${index}`} className={`log-entry ${item.status || "completed"}`}>
-                <div className="log-entry-header">
-                  <StatusBadge status={item.status || "completed"} />
-                  <span className="log-entry-meta">{item.nodeId}</span>
-                </div>
-                <p>{item.message}</p>
-              </article>
-            ))
-          ) : (
-            <p className="log-empty">No logs match the current filter.</p>
-          )}
-        </div>
-      </section>
-
+      <LogsPanel logs={logs} logCounts={logCounts} />
       <WorkflowStatsPanel stats={stats} retrievals={retrievals} />
       <NodeStatsPanel nodeResults={nodeResults} stats={stats} workflow={workflow} />
     </section>
@@ -2155,18 +2081,6 @@ function RetrievalPanel({ retrievals }) {
     </section>
   );
 }
-
-function StatusBadge({ status }) {
-  const labels = {
-    idle: "Idle",
-    running: "Running",
-    completed: "Done",
-    warning: "Warn",
-    error: "Error",
-  };
-  return <span className={`status-badge ${status}`}>{labels[status] || status}</span>;
-}
-
 
 function selectionLabel(node, edge) {
   if (node) {
