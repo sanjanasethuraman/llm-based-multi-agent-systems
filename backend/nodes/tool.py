@@ -7,8 +7,18 @@ class ToolNodeExecutor(NodeExecutor):
     node_type = "tool"
 
     def execute(self, node, context):
-        if(is_tool_managed_by_agent(node["id"], context["edges"], context["nodes"])):
-            return "", {"status": "skipped", "message": "Tool is managed by an agent and is not executed automatically."}
+        if is_tool_managed_by_agent(node["id"], context["edges"], context["nodes"]):
+            called_tools = context.get("agentToolCalls", [])
+            if node["id"] in called_tools:
+                return "", {
+                    "status": "completed",
+                    "message": "Tool is managed by an agent and was executed by the agent.",
+                }
+            return "", {
+                "status": "skipped",
+                "message": "Tool is managed by an agent and was not executed automatically.",
+            }
+
         config = node.get("config", {})
         incoming = collect_incoming(node["id"], context["edges"], context["values"], context["nodes"])
         tool = get_tool(config.get("toolType", "echo"))

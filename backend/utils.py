@@ -117,21 +117,22 @@ def get_available_tools(node_id, edges, nodes) -> list[dict]:
                     break
         if not target_node or (target_node.get("type") != "tool" and target_node.get("type") != "sub_agent"):
             continue
+        config = target_node.get("config", {})
         if target_node.get("type") == "tool":
-            config = target_node.get("config", {})
             tools.append({
                 "type": "tool",
+                "node_id": target_node.get("id"),
                 "server_id": config.get("serverId", "internal"),
-                "tool_name": config.get("toolName"),
+                "tool_name": config.get("toolName") or config.get("toolType"),
+                "config": config,
             })
         elif target_node.get("type") == "sub_agent":
-            config = target_node.get("config", {})
             tools.append({
                 "type": "sub_agent",
-                "server_id": f"sub-agent-{target_node.get("id")}",
-                "tool_name": f"run_{config.get('name', 'agent')}",
                 "node_id": target_node.get("id"),
-                "config": config
+                "server_id": f"sub-agent-{target_node.get('id')}",
+                "tool_name": f"run_{config.get('name', 'agent')}",
+                "config": config,
             })
     return tools
 

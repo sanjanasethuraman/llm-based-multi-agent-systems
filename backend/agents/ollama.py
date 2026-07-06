@@ -14,6 +14,7 @@ class OllamaProvider(AgentProvider):
     async def run(self, config, incoming, mcp_registry, available_tools: list[dict]):
         tool_calls = 0
         sub_agent_calls = 0
+        called_tools = []
         model = config.get("model", "llama3.2:1b")
         messages = [{"role": "system", "content": config.get("systemPrompt", "You are a helpful assistant.")}] 
 
@@ -82,6 +83,11 @@ class OllamaProvider(AgentProvider):
                     else:
                         tool_calls += 1
 
+                    called_tools.append({
+                        "server_id": server_id,
+                        "tool_name": name,
+                    })
+
                     result = await client.call_tool(name, tool_call.function.arguments or {})
                     
                     messages.append({
@@ -92,7 +98,7 @@ class OllamaProvider(AgentProvider):
             else:
                 logger.info("No tool calls, breaking out of loop.")
                 break
-        return response.message.content, tool_calls, sub_agent_calls
+        return response.message.content, tool_calls, sub_agent_calls, called_tools
     
     def _to_ollama_schema(self, tool) -> dict:
         """Convert an MCP Tool object to Ollama's expected tool schema."""

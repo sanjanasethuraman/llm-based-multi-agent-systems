@@ -172,6 +172,7 @@ async def run_workflow(workflow, mcp_registry: McpClientRegistry):
         "stats": stats,
         "retrievals": retrievals,
         "mcpCalls": [],
+        "agentToolCalls": [],
         "mcp_registry": mcp_registry,
         }
     

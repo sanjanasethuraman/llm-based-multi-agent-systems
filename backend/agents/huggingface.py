@@ -37,7 +37,7 @@ class HuggingFaceProvider(AgentProvider):
                 f"[{name} | huggingface unavailable]\n"
                 "No Hugging Face token was configured. Add a token in the agent settings "
                 "or set HF_TOKEN / HUGGING_FACE_API_TOKEN before starting the server."
-            ), 0, 0
+            ), 0, 0, []
 
         try:
             data = json.dumps(payload).encode("utf-8")
@@ -60,15 +60,15 @@ class HuggingFaceProvider(AgentProvider):
                 f"[{name} | huggingface error]\n"
                 f"Model: {model}\n"
                 f"HTTP {exc.code}: {detail}"
-            ), 0, 0
+            ), 0, 0, []
         except error.URLError as exc:
             return (
                 f"[{name} | huggingface unavailable]\n"
                 f"Could not reach Hugging Face Inference API for model {model}.\n"
                 f"Details: {exc}"
-            ), 0, 0
+            ), 0, 0, []
         except Exception as exc:
-            return f"[{name} | huggingface error]\n{exc}", 0, 0
+            return f"[{name} | huggingface error]\n{exc}", 0, 0, []
 
 
 def get_huggingface_token(config=None):
