@@ -113,7 +113,7 @@ class OllamaProvider(AgentProvider):
                     try:
                         result = await asyncio.wait_for(
                             client.call_tool(name, tool_call.function.arguments or {}),
-                            timeout=120.0
+                            timeout=300.0
                         )
                     except asyncio.TimeoutError:
                         logger.error(f"Tool call {name} timed out")

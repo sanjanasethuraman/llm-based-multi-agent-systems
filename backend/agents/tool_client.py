@@ -1,8 +1,9 @@
-from mcp import ClientSession, StdioServerParameters
+from mcp import ClientSession, StdioServerParameters, Tool
 from mcp.client.stdio import stdio_client
 from mcp.client.streamable_http import streamable_http_client
 from httpx import AsyncClient
 import logging
+from backend.mcp_registry import McpServerConfig
 
 logger = logging.getLogger(__name__)
 
@@ -18,7 +19,7 @@ class McpToolClient:
         self._session = None
 
     @classmethod
-    def from_config(cls, config):
+    def from_config(cls, config: McpServerConfig):
         instance = cls.__new__(cls)
         instance._config = {
             "transport": config.transport,
@@ -67,7 +68,7 @@ class McpToolClient:
         except Exception as e:
             logger.debug(f"Stream cleanup: {e}")
 
-    async def list_tools(self) -> list:
+    async def list_tools(self) -> list[Tool]:
         result = await self._session.list_tools()
         return result.tools
 

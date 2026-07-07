@@ -1,6 +1,4 @@
 import logging
-from backend.agents.tool_client import McpToolClient
-from backend.mcp_registry import McpServerConfig
 
 logger = logging.getLogger(__name__)
 
@@ -8,24 +6,22 @@ logger = logging.getLogger(__name__)
 class SubAgentRegistry:
     """
     Registry for use inside sub-agent processes.
-    All tools and sub-agents use HTTP MCP clients.
+    Uses ProxyToolClient for all tool/sub-agent calls.
+    No MCP clients, no process management — all handled by the main server.
     """
 
     def __init__(self):
         self._clients: dict = {}
 
-    async def add_http_client(self, server_id: str, config: McpServerConfig):
-        client = McpToolClient.from_config(config)
-        await client.__aenter__()
+    async def add_proxy_client(self, server_id: str):
+        """Fetch tool schemas from main server and register a proxy client."""
+        from backend.agents.proxy_tool_client import ProxyToolClient
+        client = await ProxyToolClient.create(server_id)
         self._clients[server_id] = client
-        logger.info(f"HTTP MCP client connected: {server_id} → {config.url}")
+        logger.info(f"Proxy client registered: {server_id}")
 
     def all_clients(self) -> dict:
         return dict(self._clients)
 
     def get_client(self, server_id: str):
         return self._clients.get(server_id)
-
-    async def close_all(self):
-        self._clients.clear()
-        logger.info("All HTTP MCP clients closed.")
