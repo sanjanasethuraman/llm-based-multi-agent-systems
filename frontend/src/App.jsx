@@ -41,6 +41,7 @@ import WorkflowTabs from "./components/WorkflowTabs.jsx"
 import ExecutionModeControl from "./components/ExecutionModeControl.jsx"
 import ComparisonReport from "./components/ComparisonReport.jsx"
 import IconButton from "./components/IconButton.jsx"
+import PrimeKGPanel from "./components/PrimeKGPanel.jsx"
 import { useWorkflowTabs } from "./hooks/useWorkflowTabs.js";
 
 const nodeTypes = { workflow: WorkflowNode };
@@ -119,6 +120,18 @@ function WorkflowApp() {
   const [ollamaStatus, setOllamaStatus] = useState(null);
   const [huggingFaceStatus, setHuggingFaceStatus] = useState(null);
   const [graphStatus, setGraphStatus] = useState(null);
+  const [primekgStatus, setPrimekgStatus] = useState(null);
+  const [primekgPreview, setPrimekgPreview] = useState(null);
+  const [primekgImportSummary, setPrimekgImportSummary] = useState(null);
+  const [primekgGraph, setPrimekgGraph] = useState(null);
+  const [primekgLoading, setPrimekgLoading] = useState("");
+  const [primekgError, setPrimekgError] = useState("");
+  const [primekgForm, setPrimekgForm] = useState({
+    disease: "migraine",
+    depth: 2,
+    maxNodes: 1000,
+    maxRelationships: 3000,
+  });
   const [ingestStatus, setIngestStatus] = useState("No document ingested yet.");
   const [comparisonReports, setComparisonReports] = useState([]);
   const [isRunningBatch, setIsRunningBatch] = useState(false);
@@ -208,6 +221,7 @@ function WorkflowApp() {
     refreshCollections();
     refreshMcpTools();
     refreshGraphStatus();
+    refreshPrimekgStatus();
     loadVectorDatabaseProviders();
   }, []);
 
@@ -570,12 +584,111 @@ function WorkflowApp() {
       setStatusMessage("Seeding biomedical Neo4j graph...");
       const result = await postJson("/api/graph-rag/seed-demo", {});
       setIngestStatus(JSON.stringify(result, null, 2));
-      setStatusMessage(`Seeded ${result.entities} entities and ${result.relationships} relationships into ${result.collection}.`);
+      if (result.status === "seeded") {
+        setStatusMessage(`Seeded ${result.entities} entities and ${result.relationships} relationships into ${result.collection}.`);
+      } else {
+        setStatusMessage(result.message || `Biomedical KG seed status: ${result.status}`);
+      }
       await refreshGraphStatus();
       await refreshCollections();
     } catch (error) {
       setIngestStatus(error.message);
       setStatusMessage(error.message);
+    }
+  }
+
+  async function refreshPrimekgStatus() {
+    try {
+      setPrimekgError("");
+      setPrimekgLoading("status");
+      const result = await getJson("/api/primekg/status");
+      setPrimekgStatus(result);
+      if (result.lastImportSummary) {
+        setPrimekgImportSummary(result.lastImportSummary);
+      }
+    } catch (error) {
+      setPrimekgError(error.message);
+      setPrimekgStatus({ configured: false, fileExists: false, neo4jConnected: false, message: error.message });
+    } finally {
+      setPrimekgLoading("");
+    }
+  }
+
+  async function previewPrimekgSubgraph() {
+    try {
+      setPrimekgError("");
+      setPrimekgLoading("preview");
+      const result = await postJson("/api/primekg/filter-preview", {
+        csvPath: "data/primekg/kg.csv",
+        disease: primekgForm.disease,
+        depth: Number(primekgForm.depth),
+        maxNodes: Number(primekgForm.maxNodes),
+        maxRelationships: Number(primekgForm.maxRelationships),
+        allowedNodeTypes: [],
+        allowedRelationTypes: [],
+      });
+      setPrimekgPreview(result);
+      setStatusMessage(result.ok ? `PrimeKG preview found ${result.nodeCount} nodes and ${result.relationshipCount} relationships.` : result.error || "PrimeKG preview completed.");
+      await refreshPrimekgStatus();
+    } catch (error) {
+      setPrimekgError(error.message);
+      setStatusMessage(error.message);
+    } finally {
+      setPrimekgLoading("");
+    }
+  }
+
+  async function importPrimekgSubgraph() {
+    if (!primekgPreview?.outputPath) {
+      setPrimekgError("Preview a PrimeKG subgraph before importing.");
+      return;
+    }
+    try {
+      setPrimekgError("");
+      setPrimekgLoading("import");
+      const result = await postJson("/api/primekg/import-filtered", {
+        filteredPath: primekgPreview.outputPath,
+        dryRun: false,
+        clearExistingPrimeKG: false,
+      });
+      setPrimekgImportSummary(result);
+      setPrimekgGraph(null);
+      setStatusMessage(
+        result.status === "imported"
+          ? `Imported ${result.nodesImported} PrimeKG nodes and ${result.relationshipsImported} relationships.`
+          : `PrimeKG import status: ${result.status}`,
+      );
+      await refreshPrimekgStatus();
+      await refreshGraphStatus();
+    } catch (error) {
+      setPrimekgError(error.message);
+      setStatusMessage(error.message);
+    } finally {
+      setPrimekgLoading("");
+    }
+  }
+
+  async function loadPrimekgGraph() {
+    try {
+      setPrimekgError("");
+      setPrimekgLoading("graph");
+      const result = await postJson("/api/primekg/graph", {
+        disease: primekgForm.disease,
+        depth: Number(primekgForm.depth),
+        maxNodes: Math.min(Number(primekgForm.maxNodes) || 120, 300),
+        maxRelationships: Math.min(Number(primekgForm.maxRelationships) || 250, 600),
+      });
+      setPrimekgGraph(result);
+      setStatusMessage(
+        result.status === "available"
+          ? `Loaded in-app PrimeKG graph with ${result.stats?.nodeCount || 0} nodes and ${result.stats?.relationshipCount || 0} relationships.`
+          : result.message || "PrimeKG graph view loaded.",
+      );
+    } catch (error) {
+      setPrimekgError(error.message);
+      setStatusMessage(error.message);
+    } finally {
+      setPrimekgLoading("");
     }
   }
 
@@ -864,6 +977,22 @@ function WorkflowApp() {
         onIngest={ingestDocuments}
         onRefreshCollections={refreshCollections}
         dynamicVectorBackendOptions={dynamicVectorBackendOptions}
+      />
+
+      <PrimeKGPanel
+        form={primekgForm}
+        status={primekgStatus}
+        preview={primekgPreview}
+        importSummary={primekgImportSummary}
+        graph={primekgGraph}
+        retrievals={retrievals}
+        loading={primekgLoading}
+        error={primekgError}
+        onFormChange={setPrimekgForm}
+        onRefreshStatus={refreshPrimekgStatus}
+        onPreview={previewPrimekgSubgraph}
+        onImport={importPrimekgSubgraph}
+        onLoadGraph={loadPrimekgGraph}
       />
 
       <McpServersPanel
@@ -1423,6 +1552,19 @@ function RagPanel({
   dynamicVectorBackendOptions,
 }) {
   const updateField = (field, value) => onFormChange((current) => ({ ...current, [field]: value }));
+  const graphState = graphStatus
+    ? graphStatus.enabled === false
+      ? "disabled"
+      : graphStatus.connected
+        ? "connected"
+        : "offline"
+    : "checking";
+  const graphNoteClass = graphState === "connected" ? "success" : graphState === "disabled" ? "neutral" : "warning";
+  const graphMessage = graphStatus
+    ? graphState === "connected"
+      ? `connected to ${graphStatus.uri || "Neo4j"}`
+      : `${graphState} at ${graphStatus.uri || "bolt://127.0.0.1:7687"}. ${graphStatus.message || graphStatus.error || ""}`
+    : "Checking graph backend...";
   return (
     <section className="rag-panel">
       <div className="section-header">
@@ -1476,14 +1618,19 @@ function RagPanel({
         <ProviderNote provider="ollama" ollamaStatus={ollamaStatus} />
       </div>
 
-      <div className={`provider-note ${graphStatus?.connected ? "success" : "warning"}`}>
+      <div className={`provider-note ${graphNoteClass}`}>
         <strong>Neo4j Graph RAG:</strong>{" "}
-        {graphStatus
-          ? `${graphStatus.connected ? "connected" : "not connected"} at ${graphStatus.uri || "bolt://127.0.0.1:7687"}. ${graphStatus.message || ""}`
-          : "Checking graph backend..."}
+        {graphMessage}
+        {graphStatus?.setupHint ? <div>{graphStatus.setupHint}</div> : null}
         <div className="inline-actions">
           <IconButton icon={RefreshCcw} label="Graph Status" onClick={onRefreshGraphStatus} />
-          <IconButton icon={Upload} label="Seed Biomedical KG" variant="primary" onClick={onSeedBiomedicalGraph} />
+          <IconButton
+            disabled={graphState !== "connected"}
+            icon={Upload}
+            label={graphState === "connected" ? "Seed Biomedical KG" : "Seed Unavailable"}
+            variant="primary"
+            onClick={onSeedBiomedicalGraph}
+          />
         </div>
       </div>
 
@@ -2089,7 +2236,7 @@ function RetrievalPanel({ retrievals }) {
       retrievalMode: retrieval.retrievalMode,
       evidence: retrieval.graphEvidence,
     }))
-    .filter((item) => item.evidence && (item.evidence.entities?.length || item.evidence.relationships?.length || item.evidence.message));
+    .filter((item) => item.evidence && (item.evidence.entities?.length || item.evidence.relationships?.length || item.evidence.paths?.length || item.evidence.chunks?.length || item.evidence.message));
 
   return (
     <section className="retrieval-panel">
@@ -2130,20 +2277,54 @@ function RetrievalPanel({ retrievals }) {
                 <span>{item.evidence.status || "available"}</span>
               </div>
               {item.evidence.message && <p>{item.evidence.message}</p>}
+              {item.evidence.stats ? (
+                <div className="graph-stats-row">
+                  <span>{item.evidence.stats.pathCount || 0} paths</span>
+                  <span>{item.evidence.stats.entityCount || item.evidence.entities?.length || 0} entities</span>
+                  <span>{item.evidence.stats.relationshipCount || item.evidence.relationships?.length || 0} relationships</span>
+                </div>
+              ) : null}
+              {item.evidence.paths?.length ? (
+                <div className="graph-path-list">
+                  <h3>Readable Paths</h3>
+                  {item.evidence.paths.slice(0, 8).map((path, index) => (
+                    <div key={`${item.nodeId}-path-${index}`} className="primekg-path-line">
+                      {path.path_text || path.pathText}
+                    </div>
+                  ))}
+                </div>
+              ) : item.evidence.path_text?.length ? (
+                <div className="graph-path-list">
+                  <h3>Readable Paths</h3>
+                  {item.evidence.path_text.slice(0, 8).map((pathText, index) => (
+                    <div key={`${item.nodeId}-path-text-${index}`} className="primekg-path-line">
+                      {pathText}
+                    </div>
+                  ))}
+                </div>
+              ) : null}
               {item.evidence.entities?.length ? (
                 <p>
                   <strong>Entities:</strong>{" "}
-                  {item.evidence.entities.slice(0, 12).map((entity) => `${entity.type || "Entity"}:${entity.name}`).join(", ")}
+                  {item.evidence.entities.slice(0, 12).map((entity) => `${entity.type || entity.node_type || "Entity"}:${entity.name}`).join(", ")}
                 </p>
               ) : null}
               {item.evidence.relationships?.length ? (
                 <ul>
                   {item.evidence.relationships.slice(0, 10).map((relationship, index) => (
-                    <li key={`${relationship.source}-${relationship.target}-${relationship.type}-${index}`}>
-                      {relationship.sourceName} -[{relationship.type}]-&gt; {relationship.targetName}
+                    <li key={`${relationship.source}-${relationship.target}-${relationship.type || relationship.relation}-${index}`}>
+                      {relationship.sourceName || relationship.source} -[{relationship.displayRelation || relationship.type || relationship.relation}]-&gt; {relationship.targetName || relationship.target}
                     </li>
                   ))}
                 </ul>
+              ) : null}
+              {item.evidence.chunks?.length ? (
+                <div className="graph-chunk-list">
+                  <h3>Evidence Chunks</h3>
+                  {item.evidence.chunks.slice(0, 3).map((chunk, index) => (
+                    <p key={`${item.nodeId}-chunk-${chunk?.id || index}`}>{chunk?.text || chunk?.title || "Graph evidence chunk"}</p>
+                  ))}
+                </div>
               ) : null}
             </article>
           ))}

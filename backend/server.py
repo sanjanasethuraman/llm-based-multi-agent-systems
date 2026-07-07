@@ -31,6 +31,7 @@ try:
     from workflow import generate_python, run_workflow, validate_workflow
     from mcp_registry import registry, McpServerConfig, _list_all_tools
     from graph_rag import graph_store_status, import_seed_graph, load_seed_file
+    from primekg_api import PrimeKGApiError, filter_and_import, filter_preview, import_filtered, primekg_graph, primekg_status, search_diseases
     from batch_workflow import run_workflow_batch, generate_comparison_summary
     from vector_db import VectorDatabaseRegistry
 except ModuleNotFoundError:
@@ -47,6 +48,7 @@ except ModuleNotFoundError:
     from backend.workflow import generate_python, run_workflow, validate_workflow
     from backend.mcp_registry import registry, McpServerConfig, _list_all_tools
     from backend.graph_rag import graph_store_status, import_seed_graph, load_seed_file
+    from backend.primekg_api import PrimeKGApiError, filter_and_import, filter_preview, import_filtered, primekg_graph, primekg_status, search_diseases
     from backend.batch_workflow import run_workflow_batch, generate_comparison_summary
     from backend.vector_db import VectorDatabaseRegistry
 
@@ -74,7 +76,7 @@ async def _init_mcp_clients():
         id="internal",
         label="Internal Tools",
         transport="stdio",
-        command="python3",
+        command=sys.executable,
         args=["-m", "backend.tools.run_mcp_server"]
     ))
     try:
@@ -101,6 +103,14 @@ class AppHandler(BaseHTTPRequestHandler):
             return self._send_json(list_vector_collections())
         if parsed.path == "/api/graph-rag/status":
             return self._send_json(graph_store_status())
+        if parsed.path == "/api/primekg/status":
+            return self._send_json(primekg_status())
+        if parsed.path == "/api/primekg/diseases":
+            params = parse_qs(parsed.query)
+            return self._send_json(search_diseases(
+                query=params.get("query", [""])[0],
+                limit=params.get("limit", [20])[0],
+            ))
         if parsed.path == "/api/documents/collections":
             return self._send_json(self._collections_payload())
         if parsed.path == "/api/mcp/tools":
@@ -189,6 +199,14 @@ class AppHandler(BaseHTTPRequestHandler):
                 seed_file = EXAMPLES_DIR / "biomedical_kg_seed.json"
                 seed_payload = load_seed_file(seed_file)
                 return self._send_json(import_seed_graph(seed_payload, payload))
+            if self.path == "/api/primekg/filter-preview":
+                return self._send_json(filter_preview(payload))
+            if self.path == "/api/primekg/import-filtered":
+                return self._send_json(import_filtered(payload))
+            if self.path == "/api/primekg/filter-and-import":
+                return self._send_json(filter_and_import(payload))
+            if self.path == "/api/primekg/graph":
+                return self._send_json(primekg_graph(payload))
             if self.path == "/api/generate-python":
                 return self._send_json({"code": generate_python(payload)})
             if self.path == "/api/validate":
@@ -206,6 +224,8 @@ class AppHandler(BaseHTTPRequestHandler):
             if self.path == "/api/ingest-document":
                 return self._send_json(ingest_documents(payload))
             self.send_error(404, "Not found")
+        except PrimeKGApiError as exc:
+            self._send_json({"error": str(exc)}, status=400)
         except Exception as exc:
             self._send_json({"error": str(exc)}, status=400)
 

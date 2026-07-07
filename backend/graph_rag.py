@@ -4,6 +4,7 @@ import os
 import re
 import time
 from pathlib import Path
+from urllib.parse import urlparse
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -11,6 +12,7 @@ DEFAULT_URI = "bolt://127.0.0.1:7687"
 DEFAULT_USER = "neo4j"
 DEFAULT_PASSWORD = "visualmas"
 DEFAULT_DATABASE = "neo4j"
+GRAPH_RAG_DISABLED_MESSAGE = "Neo4j Graph RAG is disabled."
 
 BIOMEDICAL_TERMS = {
     "Disease": [
@@ -84,28 +86,98 @@ COMMON_ENTITY_WORDS = {
     "Visual",
 }
 
+PRIMEKG_DEFAULT_NODE_TYPES = {
+    "disease",
+    "drug",
+    "gene/protein",
+    "pathway",
+    "phenotype",
+    "biological_process",
+    "molecular_function",
+    "anatomy",
+    "exposure",
+    "other",
+}
+
+PRIMEKG_NODE_TYPE_ALIASES = {
+    "gene": "gene/protein",
+    "protein": "gene/protein",
+    "gene_protein": "gene/protein",
+    "gene/protein": "gene/protein",
+    "mechanism": "biological_process",
+    "biological process": "biological_process",
+    "biological_process": "biological_process",
+    "molecular function": "molecular_function",
+    "molecular_function": "molecular_function",
+    "symptom": "phenotype",
+    "treatment": "drug",
+}
+
+PRIMEKG_NODE_TYPE_WEIGHTS = {
+    "disease": 8,
+    "drug": 7,
+    "gene/protein": 6,
+    "pathway": 6,
+    "biological_process": 6,
+    "molecular_function": 5,
+    "phenotype": 5,
+    "anatomy": 2,
+    "exposure": 2,
+    "other": 1,
+}
+
+PRIMEKG_RELATION_KEYWORDS = {
+    "indication": 8,
+    "treat": 8,
+    "therapy": 8,
+    "target": 7,
+    "associated": 6,
+    "mechanism": 6,
+    "pathway": 6,
+    "phenotype": 5,
+    "symptom": 5,
+    "process": 4,
+}
+
 
 def graph_store_status(config=None):
     settings = neo4j_settings(config)
+    enabled = graph_rag_enabled(config)
+    host_info = neo4j_host_info(settings["uri"])
     status = {
         "backend": "neo4j",
-        "uri": settings["uri"],
+        "enabled": enabled,
+        "available": False,
+        "uri": redact_uri(settings["uri"]),
+        "host": host_info["host"],
+        "port": host_info["port"],
         "database": settings["database"],
         "configured": bool(settings["uri"] and settings["user"] and settings["password"]),
         "driverInstalled": False,
         "connected": False,
+        "error": "",
         "message": "",
+        "setupHint": "",
     }
+    if not enabled:
+        status["message"] = GRAPH_RAG_DISABLED_MESSAGE
+        status["setupHint"] = "Set GRAPH_RAG_ENABLED=true and start Neo4j to enable graph retrieval."
+        return status
+
     try:
         import neo4j  # noqa: F401
 
         status["driverInstalled"] = True
     except Exception:
         status["message"] = "Install the neo4j Python package to enable Graph RAG."
+        status["error"] = status["message"]
+        status["setupHint"] = "Run `python -m pip install -r requirements.txt`."
         return status
 
     if not status["configured"]:
         status["message"] = "Set NEO4J_URI, NEO4J_USER, and NEO4J_PASSWORD."
+        status["error"] = status["message"]
+        status["setupHint"] = "Copy .env.example values or export Neo4j environment variables before starting the backend."
         return status
 
     try:
@@ -113,10 +185,26 @@ def graph_store_status(config=None):
             with driver.session(database=settings["database"]) as session:
                 session.run("RETURN 1 AS ok").single()
         status["connected"] = True
+        status["available"] = True
         status["message"] = "Neo4j is reachable."
     except Exception as exc:
         status["message"] = str(exc)
+        status["error"] = str(exc)
+        status["setupHint"] = "Start Neo4j with `docker compose -f docker-compose.neo4j.yml up -d`, then retry Graph Status."
     return status
+
+
+def graph_rag_enabled(config=None):
+    config = config or {}
+    if "graphRagEnabled" in config:
+        return truthy(config.get("graphRagEnabled"))
+    if "graphEnabled" in config:
+        return truthy(config.get("graphEnabled"))
+    return truthy(os.environ.get("GRAPH_RAG_ENABLED", "true"))
+
+
+def truthy(value):
+    return str(value).strip().lower() not in {"0", "false", "no", "off", "disabled"}
 
 
 def neo4j_settings(config=None):
@@ -127,6 +215,25 @@ def neo4j_settings(config=None):
         "password": config.get("neo4jPassword") or os.environ.get("NEO4J_PASSWORD") or DEFAULT_PASSWORD,
         "database": config.get("neo4jDatabase") or os.environ.get("NEO4J_DATABASE") or DEFAULT_DATABASE,
     }
+
+
+def neo4j_host_info(uri):
+    parsed = urlparse(uri or "")
+    return {
+        "host": parsed.hostname or "",
+        "port": parsed.port,
+        "scheme": parsed.scheme or "",
+    }
+
+
+def redact_uri(uri):
+    parsed = urlparse(uri or "")
+    if not parsed.username and not parsed.password:
+        return uri
+    host = parsed.hostname or ""
+    if parsed.port:
+        host = f"{host}:{parsed.port}"
+    return parsed._replace(netloc=host).geturl()
 
 
 def get_driver(config=None):
@@ -149,6 +256,8 @@ def upsert_graph_chunks(collection, chunks, config=None):
     if not chunks:
         return {"status": "skipped", "message": "No chunks available for graph indexing."}
     status = graph_store_status(config)
+    if not status["enabled"]:
+        return {"status": "disabled", "message": status["message"], "store": status}
     if not status["connected"]:
         return {"status": "unavailable", "message": status["message"], "store": status}
 
@@ -156,23 +265,31 @@ def upsert_graph_chunks(collection, chunks, config=None):
     started = time.perf_counter()
     total_entities = 0
     total_relationships = 0
-    with get_driver(config) as driver:
-        with driver.session(database=settings["database"]) as session:
-            ensure_schema(session)
-            for chunk in chunks:
-                entities = extract_entities(chunk.get("text", ""))
-                for entity in entities:
-                    entity["id"] = entity_id_for(collection, entity["name"], entity["type"])
-                relationships = extract_relationships(chunk.get("text", ""), entities)
-                total_entities += len(entities)
-                total_relationships += len(relationships)
-                session.execute_write(
-                    _upsert_chunk_tx,
-                    collection,
-                    chunk,
-                    entities,
-                    relationships,
-                )
+    try:
+        with get_driver(config) as driver:
+            with driver.session(database=settings["database"]) as session:
+                ensure_schema(session)
+                for chunk in chunks:
+                    entities = extract_entities(chunk.get("text", ""))
+                    for entity in entities:
+                        entity["id"] = entity_id_for(collection, entity["name"], entity["type"])
+                    relationships = extract_relationships(chunk.get("text", ""), entities)
+                    total_entities += len(entities)
+                    total_relationships += len(relationships)
+                    session.execute_write(
+                        _upsert_chunk_tx,
+                        collection,
+                        chunk,
+                        entities,
+                        relationships,
+                    )
+    except Exception as exc:
+        return {
+            "status": "unavailable",
+            "backend": "neo4j",
+            "message": f"Graph indexing skipped because Neo4j failed during indexing: {exc}",
+            "store": graph_store_status(config),
+        }
 
     return {
         "status": "indexed",
@@ -260,16 +377,26 @@ def _upsert_chunk_tx(tx, collection, chunk, entities, relationships):
 
 def retrieve_graph_context(collection, query, top_k=5, hops=1, config=None):
     status = graph_store_status(config)
+    if not status["enabled"]:
+        return graph_unavailable_result(status, "disabled")
     if not status["connected"]:
-        return {
-            "context": f"Graph RAG unavailable: {status['message']}",
-            "matches": [],
-            "graphEvidence": {"status": "unavailable", "message": status["message"], "entities": [], "relationships": []},
-            "graphBackend": "neo4j",
-        }
+        return graph_unavailable_result(status, "unavailable")
 
     hops = max(1, min(int(hops or 1), 3))
     top_k = max(1, min(int(top_k or 5), 20))
+    primekg_retrieval = retrieve_primekg_paths(
+        query,
+        disease=(config or {}).get("disease") or (config or {}).get("graphDisease"),
+        top_k=top_k,
+        max_depth=hops,
+        allowed_node_types=(config or {}).get("primekgAllowedNodeTypes") or (config or {}).get("allowedNodeTypes"),
+        config=config,
+        checked_status=status,
+    )
+    primekg_evidence = primekg_retrieval.get("graphEvidence") or {}
+    if primekg_evidence.get("status") == "available" and primekg_evidence.get("paths"):
+        return primekg_retrieval
+
     terms = query_terms(query)
     query_entities = extract_entities(query)
     terms.extend(normalize_name(entity["name"]) for entity in query_entities)
@@ -279,77 +406,83 @@ def retrieve_graph_context(collection, query, top_k=5, hops=1, config=None):
         return empty_graph_result(collection, "No query terms were available for graph lookup.")
 
     settings = neo4j_settings(config)
-    with get_driver(config) as driver:
-        with driver.session(database=settings["database"]) as session:
-            seeds = session.run(
-                """
-                MATCH (e:Entity {collection: $collection})
-                WHERE any(term IN $terms WHERE toLower(e.name) CONTAINS term OR term CONTAINS toLower(e.name))
-                RETURN e.id AS id, e.name AS name, e.type AS type
-                ORDER BY size(e.name) DESC
+    try:
+        with get_driver(config) as driver:
+            with driver.session(database=settings["database"]) as session:
+                seeds = session.run(
+                    """
+                    MATCH (e:Entity {collection: $collection})
+                    WHERE any(term IN $terms WHERE toLower(e.name) CONTAINS term OR term CONTAINS toLower(e.name))
+                    RETURN e.id AS id, e.name AS name, e.type AS type
+                    ORDER BY size(e.name) DESC
+                    LIMIT $topK
+                    """,
+                    collection=collection,
+                    terms=terms,
+                    topK=top_k,
+                ).data()
+                seed_ids = [item["id"] for item in seeds]
+                if not seed_ids:
+                    return empty_graph_result(collection, "No graph entities matched the query.")
+
+                path_query = f"""
+                MATCH (seed:Entity)
+                WHERE seed.id IN $seedIds
+                MATCH path = (seed)-[:RELATED*1..{hops}]-(neighbor:Entity {{collection: $collection}})
+                RETURN
+                  [node IN nodes(path) | node {{.id, .name, .type, .collection}}] AS nodes,
+                  [rel IN relationships(path) | {{
+                    source: startNode(rel).id,
+                    sourceName: startNode(rel).name,
+                    target: endNode(rel).id,
+                    targetName: endNode(rel).name,
+                    type: rel.type,
+                    evidenceChunkIds: rel.evidenceChunkIds
+                  }}] AS relationships
                 LIMIT $topK
-                """,
-                collection=collection,
-                terms=terms,
-                topK=top_k,
-            ).data()
-            seed_ids = [item["id"] for item in seeds]
-            if not seed_ids:
-                return empty_graph_result(collection, "No graph entities matched the query.")
-
-            path_query = f"""
-            MATCH (seed:Entity)
-            WHERE seed.id IN $seedIds
-            MATCH path = (seed)-[:RELATED*1..{hops}]-(neighbor:Entity {{collection: $collection}})
-            RETURN
-              [node IN nodes(path) | node {{.id, .name, .type, .collection}}] AS nodes,
-              [rel IN relationships(path) | {{
-                source: startNode(rel).id,
-                sourceName: startNode(rel).name,
-                target: endNode(rel).id,
-                targetName: endNode(rel).name,
-                type: rel.type,
-                evidenceChunkIds: rel.evidenceChunkIds
-              }}] AS relationships
-            LIMIT $topK
-            """
-            paths = session.run(
-                path_query,
-                seedIds=seed_ids,
-                collection=collection,
-                topK=top_k,
-            ).data()
-
-            entity_ids = set(seed_ids)
-            entities_by_id = {item["id"]: item for item in seeds}
-            relationships_by_key = {}
-            for item in paths:
-                for entity in item.get("nodes", []):
-                    entity_ids.add(entity["id"])
-                    entities_by_id[entity["id"]] = entity
-                for relationship in item.get("relationships", []):
-                    key = (relationship["source"], relationship["target"], relationship["type"])
-                    relationships_by_key[key] = relationship
-
-            chunk_rows = session.run(
                 """
-                MATCH (chunk:Chunk {collection: $collection})-[:MENTIONS]->(entity:Entity)
-                WHERE entity.id IN $entityIds
-                RETURN chunk {
-                    .id,
-                    .text,
-                    .title,
-                    .source,
-                    .collection,
-                    .chunkIndex
-                } AS chunk,
-                collect(DISTINCT entity {.id, .name, .type}) AS entities
-                LIMIT $topK
-                """,
-                collection=collection,
-                entityIds=list(entity_ids),
-                topK=top_k,
-            ).data()
+                paths = session.run(
+                    path_query,
+                    seedIds=seed_ids,
+                    collection=collection,
+                    topK=top_k,
+                ).data()
+
+                entity_ids = set(seed_ids)
+                entities_by_id = {item["id"]: item for item in seeds}
+                relationships_by_key = {}
+                for item in paths:
+                    for entity in item.get("nodes", []):
+                        entity_ids.add(entity["id"])
+                        entities_by_id[entity["id"]] = entity
+                    for relationship in item.get("relationships", []):
+                        key = (relationship["source"], relationship["target"], relationship["type"])
+                        relationships_by_key[key] = relationship
+
+                chunk_rows = session.run(
+                    """
+                    MATCH (chunk:Chunk {collection: $collection})-[:MENTIONS]->(entity:Entity)
+                    WHERE entity.id IN $entityIds
+                    RETURN chunk {
+                        .id,
+                        .text,
+                        .title,
+                        .source,
+                        .collection,
+                        .chunkIndex
+                    } AS chunk,
+                    collect(DISTINCT entity {.id, .name, .type}) AS entities
+                    LIMIT $topK
+                    """,
+                    collection=collection,
+                    entityIds=list(entity_ids),
+                    topK=top_k,
+                ).data()
+    except Exception as exc:
+        failed_status = graph_store_status(config)
+        failed_status["message"] = f"Neo4j graph retrieval failed: {exc}"
+        failed_status["error"] = str(exc)
+        return graph_unavailable_result(failed_status, "unavailable")
 
     entities = sorted(entities_by_id.values(), key=lambda item: (item.get("type", ""), item.get("name", "")))
     relationships = sorted(
@@ -375,11 +508,330 @@ def retrieve_graph_context(collection, query, top_k=5, hops=1, config=None):
     }
 
 
+def retrieve_primekg_paths(query, disease=None, top_k=5, max_depth=2, allowed_node_types=None, config=None, checked_status=None):
+    status = checked_status or graph_store_status(config)
+    if not status["enabled"]:
+        return graph_unavailable_result(status, "disabled")
+    if not status["connected"]:
+        return graph_unavailable_result(status, "unavailable")
+
+    top_k = max(1, min(int(top_k or 5), 20))
+    max_depth = max(1, min(int(max_depth or 2), 3))
+    allowed_types = normalize_primekg_allowed_types(allowed_node_types)
+    terms = primekg_query_terms(query, disease)
+    if not terms:
+        return empty_primekg_result("No query terms were available for PrimeKG graph lookup.")
+
+    settings = neo4j_settings(config)
+    try:
+        with get_driver(config) as driver:
+            with driver.session(database=settings["database"]) as session:
+                has_primekg = session.run("MATCH (n:PrimeNode) RETURN n.prime_id AS id LIMIT 1").single()
+                if not has_primekg:
+                    return empty_primekg_result("No imported PrimeKG :PrimeNode graph was found.", reason="no_primekg")
+
+                seeds = find_primekg_seed_nodes(session, terms, disease, allowed_types, top_k)
+                if not seeds:
+                    return empty_primekg_result("No PrimeKG nodes matched the query.", reason="no_seed", query_terms=terms)
+
+                rows = query_primekg_path_rows(session, seeds, allowed_types, top_k, max_depth)
+    except Exception as exc:
+        failed_status = graph_store_status(config)
+        failed_status["message"] = f"PrimeKG graph retrieval failed: {exc}"
+        failed_status["error"] = str(exc)
+        return graph_unavailable_result(failed_status, "unavailable")
+
+    if not rows:
+        return empty_primekg_result("PrimeKG seeds matched, but no bounded paths were found.", reason="no_paths", query_terms=terms, seed_entities=seeds)
+    return primekg_result_from_path_rows(rows, seeds, query, terms, top_k, max_depth)
+
+
+def find_primekg_seed_nodes(session, terms, disease, allowed_types, top_k):
+    seed_limit = min(max(top_k * 3, 6), 30)
+    disease_terms = [normalize_name(disease)] if disease else []
+    if disease_terms:
+        disease_seeds = session.run(
+            """
+            MATCH (n:PrimeNode)
+            WHERE n.node_type = 'disease'
+              AND any(term IN $terms WHERE toLower(n.name) CONTAINS term OR term CONTAINS toLower(n.name))
+            RETURN n.prime_id AS id, n.name AS name, n.node_type AS type, n.source AS source
+            ORDER BY size(n.name) DESC
+            LIMIT $limit
+            """,
+            terms=disease_terms,
+            limit=seed_limit,
+        ).data()
+        if disease_seeds:
+            return disease_seeds
+
+    disease_matches = session.run(
+        """
+        MATCH (n:PrimeNode)
+        WHERE n.node_type = 'disease'
+          AND any(term IN $terms WHERE toLower(n.name) CONTAINS term OR term CONTAINS toLower(n.name))
+        RETURN n.prime_id AS id, n.name AS name, n.node_type AS type, n.source AS source
+        ORDER BY size(n.name) DESC
+        LIMIT $limit
+        """,
+        terms=terms,
+        limit=seed_limit,
+    ).data()
+    if disease_matches:
+        return disease_matches
+
+    return session.run(
+        """
+        MATCH (n:PrimeNode)
+        WHERE n.node_type IN $allowedTypes
+          AND any(term IN $terms WHERE toLower(n.name) CONTAINS term OR term CONTAINS toLower(n.name))
+        RETURN n.prime_id AS id, n.name AS name, n.node_type AS type, n.source AS source
+        ORDER BY
+          CASE n.node_type
+            WHEN 'disease' THEN 0
+            WHEN 'drug' THEN 1
+            WHEN 'gene/protein' THEN 2
+            WHEN 'pathway' THEN 3
+            WHEN 'biological_process' THEN 4
+            WHEN 'phenotype' THEN 5
+            ELSE 9
+          END,
+          size(n.name) DESC
+        LIMIT $limit
+        """,
+        terms=terms,
+        allowedTypes=sorted(allowed_types),
+        limit=seed_limit,
+    ).data()
+
+
+def query_primekg_path_rows(session, seeds, allowed_types, top_k, max_depth):
+    seed_ids = [seed["id"] for seed in seeds if seed.get("id")]
+    path_limit = min(max(top_k * 6, 20), 100)
+    path_query = f"""
+    MATCH (seed:PrimeNode)
+    WHERE seed.prime_id IN $seedIds
+    MATCH path = (seed)-[:PRIME_REL*1..{max_depth}]-(neighbor:PrimeNode)
+    WHERE all(n IN nodes(path) WHERE coalesce(n.node_type, 'other') IN $allowedTypes)
+    WITH path, nodes(path) AS ns, relationships(path) AS rs
+    WITH path, ns, rs,
+      reduce(score = 0, n IN ns |
+        score + CASE coalesce(n.node_type, 'other')
+          WHEN 'disease' THEN 8
+          WHEN 'drug' THEN 7
+          WHEN 'gene/protein' THEN 6
+          WHEN 'pathway' THEN 6
+          WHEN 'biological_process' THEN 6
+          WHEN 'molecular_function' THEN 5
+          WHEN 'phenotype' THEN 5
+          ELSE 1
+        END
+      ) +
+      reduce(score = 0, r IN rs |
+        score + CASE
+          WHEN toLower(coalesce(r.display_relation, r.relation, '')) CONTAINS 'indication' THEN 8
+          WHEN toLower(coalesce(r.display_relation, r.relation, '')) CONTAINS 'treat' THEN 8
+          WHEN toLower(coalesce(r.display_relation, r.relation, '')) CONTAINS 'target' THEN 7
+          WHEN toLower(coalesce(r.display_relation, r.relation, '')) CONTAINS 'associated' THEN 6
+          WHEN toLower(coalesce(r.display_relation, r.relation, '')) CONTAINS 'pathway' THEN 6
+          WHEN toLower(coalesce(r.display_relation, r.relation, '')) CONTAINS 'phenotype' THEN 5
+          ELSE 1
+        END
+      ) AS score
+    RETURN
+      [node IN ns | node {{
+        id: node.prime_id,
+        prime_id: node.prime_id,
+        name: node.name,
+        type: node.node_type,
+        node_type: node.node_type,
+        source: node.source,
+        disease_context: node.disease_context
+      }}] AS nodes,
+      [rel IN rs | {{
+        source: startNode(rel).prime_id,
+        sourceName: startNode(rel).name,
+        target: endNode(rel).prime_id,
+        targetName: endNode(rel).name,
+        relation: rel.relation,
+        displayRelation: rel.display_relation,
+        prime_source: rel.prime_source,
+        depth: rel.depth
+      }}] AS relationships,
+      score AS score,
+      length(path) AS length
+    ORDER BY score DESC, length(path) ASC
+    LIMIT $pathLimit
+    """
+    return session.run(
+        path_query,
+        seedIds=seed_ids,
+        allowedTypes=sorted(allowed_types),
+        pathLimit=path_limit,
+    ).data()
+
+
+def primekg_result_from_path_rows(rows, seed_entities, query, query_terms_list, top_k, max_depth):
+    entities_by_id = {}
+    relationships_by_key = {}
+    paths = []
+    seen_path_text = set()
+
+    for row in rows:
+        nodes = row.get("nodes") or []
+        relationships = row.get("relationships") or []
+        for node in nodes:
+            node_id = node.get("id") or node.get("prime_id")
+            if node_id:
+                entities_by_id[node_id] = node
+        for relationship in relationships:
+            key = (
+                relationship.get("source"),
+                relationship.get("target"),
+                relationship.get("relation") or relationship.get("displayRelation"),
+            )
+            relationships_by_key[key] = relationship
+        path_text = format_primekg_path(nodes, relationships)
+        if path_text and path_text not in seen_path_text:
+            seen_path_text.add(path_text)
+            paths.append({
+                "path_text": path_text,
+                "nodes": nodes,
+                "relationships": relationships,
+                "score": row.get("score", 0),
+                "length": row.get("length", len(relationships)),
+            })
+        if len(paths) >= top_k:
+            break
+
+    entities = sorted(entities_by_id.values(), key=lambda item: primekg_node_sort_key(item))
+    relationships = sorted(
+        relationships_by_key.values(),
+        key=lambda item: (item.get("sourceName", ""), item.get("displayRelation") or item.get("relation") or "", item.get("targetName", "")),
+    )
+    stats = {
+        "pathCount": len(paths),
+        "entityCount": len(entities),
+        "relationshipCount": len(relationships),
+        "byNodeType": count_by(entities, "type"),
+        "byRelationType": count_by(relationships, "displayRelation", fallback_key="relation"),
+        "maxDepth": max_depth,
+    }
+    context = format_primekg_context(paths, entities, relationships, stats)
+    matches = primekg_path_matches(paths)
+    return {
+        "context": context,
+        "matches": matches,
+        "graphEvidence": {
+            "status": "available",
+            "backend": "neo4j-primekg",
+            "query": query,
+            "queryTerms": query_terms_list,
+            "seedEntities": seed_entities,
+            "entities": entities,
+            "relationships": relationships,
+            "paths": paths,
+            "path_text": [path["path_text"] for path in paths],
+            "stats": stats,
+        },
+        "graphBackend": "neo4j-primekg",
+    }
+
+
+def format_primekg_path(nodes, relationships):
+    if not nodes:
+        return ""
+    parts = [nodes[0].get("name") or nodes[0].get("id") or nodes[0].get("prime_id") or "Unknown"]
+    for index, relationship in enumerate(relationships):
+        relation = relationship.get("displayRelation") or relationship.get("relation") or "related_to"
+        target_node = nodes[index + 1] if index + 1 < len(nodes) else {}
+        target = (
+            target_node.get("name")
+            or relationship.get("targetName")
+            or relationship.get("target")
+            or "Unknown"
+        )
+        parts.append(f"--{relation}-->")
+        parts.append(target)
+    return " ".join(parts)
+
+
+def format_primekg_context(paths, entities, relationships, stats):
+    lines = ["PrimeKG biomedical graph paths:"]
+    if paths:
+        for index, path in enumerate(paths[:10], start=1):
+            lines.append(f"[PrimeKG Path {index}] {path['path_text']}")
+    else:
+        lines.append("No PrimeKG paths found.")
+    if stats:
+        lines.append(
+            "Stats: "
+            f"{stats.get('pathCount', 0)} paths, "
+            f"{stats.get('entityCount', len(entities))} entities, "
+            f"{stats.get('relationshipCount', len(relationships))} relationships."
+        )
+    return "\n".join(lines)
+
+
+def primekg_path_matches(paths):
+    matches = []
+    for index, path in enumerate(paths[:10], start=1):
+        matches.append({
+            "text": path.get("path_text", ""),
+            "score": float(path.get("score") or 1.0),
+            "metadata": {
+                "id": stable_id("primekg-path", index, path.get("path_text", "")),
+                "title": f"PrimeKG path {index}",
+                "source": "neo4j-primekg",
+                "stage": "graph",
+                "pathLength": path.get("length"),
+                "entities": path.get("nodes", []),
+            },
+        })
+    return matches
+
+
+def empty_primekg_result(message, reason="empty", query_terms=None, seed_entities=None):
+    return {
+        "context": f"PrimeKG graph retrieval: {message}",
+        "matches": [],
+        "graphEvidence": {
+            "status": "empty",
+            "reason": reason,
+            "message": message,
+            "queryTerms": query_terms or [],
+            "seedEntities": seed_entities or [],
+            "entities": [],
+            "relationships": [],
+            "paths": [],
+            "path_text": [],
+            "stats": {"pathCount": 0, "entityCount": 0, "relationshipCount": 0},
+        },
+        "graphBackend": "neo4j-primekg",
+    }
+
+
 def empty_graph_result(collection, message):
     return {
         "context": f"Graph context from Neo4j collection '{collection}': {message}",
         "matches": [],
         "graphEvidence": {"status": "empty", "message": message, "entities": [], "relationships": []},
+        "graphBackend": "neo4j",
+    }
+
+
+def graph_unavailable_result(status, evidence_status="unavailable"):
+    message = status.get("message") or "Neo4j Graph RAG is not available."
+    return {
+        "context": f"Graph RAG {evidence_status}: {message}",
+        "matches": [],
+        "graphEvidence": {
+            "status": evidence_status,
+            "message": message,
+            "setupHint": status.get("setupHint", ""),
+            "entities": [],
+            "relationships": [],
+        },
         "graphBackend": "neo4j",
     }
 
@@ -434,17 +886,28 @@ def format_graph_context(collection, entities, relationships, matches):
 def import_seed_graph(payload, config=None):
     collection = payload.get("collection") or "biomedical_kg_demo"
     status = graph_store_status(config)
+    if not status["enabled"]:
+        return {"status": "disabled", "backend": "neo4j", "collection": collection, "message": status["message"], "store": status}
     if not status["connected"]:
-        raise ValueError(f"Neo4j is not available: {status['message']}")
+        return {"status": "unavailable", "backend": "neo4j", "collection": collection, "message": status["message"], "store": status}
 
     entities = payload.get("entities") or []
     relationships = payload.get("relationships") or []
     documents = payload.get("documents") or []
     settings = neo4j_settings(config)
-    with get_driver(config) as driver:
-        with driver.session(database=settings["database"]) as session:
-            ensure_schema(session)
-            session.execute_write(_import_seed_tx, collection, entities, relationships, documents)
+    try:
+        with get_driver(config) as driver:
+            with driver.session(database=settings["database"]) as session:
+                ensure_schema(session)
+                session.execute_write(_import_seed_tx, collection, entities, relationships, documents)
+    except Exception as exc:
+        return {
+            "status": "unavailable",
+            "backend": "neo4j",
+            "collection": collection,
+            "message": f"Seed import failed because Neo4j became unavailable: {exc}",
+            "store": graph_store_status(config),
+        }
     return {
         "status": "seeded",
         "backend": "neo4j",
@@ -614,6 +1077,60 @@ def query_terms(query):
         if token not in {"what", "which", "with", "from", "about", "through", "between", "connected"}:
             terms.append(token)
     return terms[:12]
+
+
+def primekg_query_terms(query, disease=None):
+    terms = []
+    if disease:
+        terms.append(normalize_name(disease))
+    terms.extend(query_terms(query))
+    phrase = normalize_name(query)
+    for stop in [
+        "what drugs are connected to",
+        "what mechanisms are connected to",
+        "show graph evidence for",
+        "treatment",
+        "drugs",
+        "mechanisms",
+        "connected",
+    ]:
+        phrase = phrase.replace(stop, " ")
+    phrase = normalize_name(phrase)
+    if phrase and len(phrase) >= 3:
+        terms.append(phrase)
+    return sorted({term for term in terms if term})[:12]
+
+
+def normalize_primekg_allowed_types(allowed_node_types=None):
+    if not allowed_node_types:
+        return set(PRIMEKG_DEFAULT_NODE_TYPES)
+    if isinstance(allowed_node_types, str):
+        raw_values = [item.strip() for item in allowed_node_types.split(",")]
+    else:
+        raw_values = [str(item).strip() for item in allowed_node_types]
+    normalized = set()
+    for value in raw_values:
+        if not value:
+            continue
+        lowered = normalize_name(value).replace("_", " ")
+        normalized_value = PRIMEKG_NODE_TYPE_ALIASES.get(lowered, lowered.replace(" ", "_"))
+        if normalized_value in PRIMEKG_DEFAULT_NODE_TYPES:
+            normalized.add(normalized_value)
+    normalized.add("disease")
+    return normalized or set(PRIMEKG_DEFAULT_NODE_TYPES)
+
+
+def primekg_node_sort_key(node):
+    node_type = node.get("type") or node.get("node_type") or "other"
+    return (-PRIMEKG_NODE_TYPE_WEIGHTS.get(node_type, 1), node_type, node.get("name", ""))
+
+
+def count_by(items, key, fallback_key=None):
+    counts = {}
+    for item in items:
+        value = item.get(key) or (item.get(fallback_key) if fallback_key else None) or "unknown"
+        counts[value] = counts.get(value, 0) + 1
+    return dict(sorted(counts.items()))
 
 
 def entity_id_for(collection, name, entity_type):

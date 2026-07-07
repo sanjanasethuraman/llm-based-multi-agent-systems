@@ -1,0 +1,85 @@
+{
+  "label": "PrimeKG Migraine Graph RAG",
+  "description": "Demo workflow for querying a filtered PrimeKG migraine subgraph imported into Neo4j.",
+  "workflow": {
+    "nodes": [
+      {
+        "id": "input-1",
+        "type": "input",
+        "label": "Migraine Question",
+        "position": { "x": 60, "y": 205 },
+        "config": {
+          "text": "What drugs are connected to migraine?"
+        }
+      },
+      {
+        "id": "vector-1",
+        "type": "vector_db",
+        "label": "Optional Biomedical Notes",
+        "position": { "x": 290, "y": 320 },
+        "config": {
+          "collection": "primekg_migraine_demo",
+          "vectorBackend": "local-json-fallback",
+          "embeddingModel": "nomic-embed-text",
+          "baseUrl": "http://127.0.0.1:11434",
+          "graphEnabled": true
+        }
+      },
+      {
+        "id": "retriever-1",
+        "type": "retriever",
+        "label": "PrimeKG Graph Retriever",
+        "position": { "x": 315, "y": 165 },
+        "config": {
+          "collection": "primekg_migraine_demo",
+          "retrievalMode": "hybrid",
+          "vectorBackend": "local-json-fallback",
+          "embeddingModel": "nomic-embed-text",
+          "baseUrl": "http://127.0.0.1:11434",
+          "topK": 3,
+          "graphDisease": "migraine",
+          "graphHops": 2,
+          "graphTopK": 8,
+          "primekgAllowedNodeTypes": [
+            "disease",
+            "drug",
+            "gene/protein",
+            "pathway",
+            "biological_process",
+            "molecular_function",
+            "phenotype"
+          ],
+          "graphEnabled": true
+        }
+      },
+      {
+        "id": "agent-1",
+        "type": "agent",
+        "label": "Biomedical Evidence Synthesizer",
+        "position": { "x": 575, "y": 165 },
+        "config": {
+          "name": "Biomedical Evidence Synthesizer",
+          "provider": "mock",
+          "model": "llama3.2:1b",
+          "baseUrl": "http://127.0.0.1:11434",
+          "temperature": 0.2,
+          "think": false,
+          "systemPrompt": "Answer using retrieved biomedical context and PrimeKG graph evidence. Prefer readable graph paths, name the disease, genes/proteins, mechanisms, phenotypes, and drugs when present. If PrimeKG or Neo4j is missing, say what setup step is missing. Include that this is biomedical research exploration, not medical advice."
+        }
+      },
+      {
+        "id": "output-1",
+        "type": "output",
+        "label": "PrimeKG Graph RAG Answer",
+        "position": { "x": 850, "y": 205 },
+        "config": {}
+      }
+    ],
+    "edges": [
+      { "source": "input-1", "target": "retriever-1" },
+      { "source": "vector-1", "target": "retriever-1" },
+      { "source": "retriever-1", "target": "agent-1" },
+      { "source": "agent-1", "target": "output-1" }
+    ]
+  }
+}

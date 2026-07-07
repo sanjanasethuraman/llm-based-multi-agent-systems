@@ -5,8 +5,13 @@ __pycache__/
 .pycache/
 node_modules/
 frontend/dist/
-data/
+data/*
+!data/primekg/
+!data/primekg/.gitignore
+!data/primekg/README.md
 generated/
 .env
 .env.local
 logs/
+*.log
+*.pid

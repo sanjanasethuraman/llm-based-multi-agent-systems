@@ -112,11 +112,14 @@ If Ollama embeddings are unavailable, ingestion falls back to deterministic loca
 Graph RAG uses Neo4j as an actual property graph backend. The default app settings expect:
 
 ```bash
+GRAPH_RAG_ENABLED=true
 NEO4J_URI=bolt://127.0.0.1:7687
 NEO4J_USER=neo4j
 NEO4J_PASSWORD=visualmas
 NEO4J_DATABASE=neo4j
 ```
+
+Copy `.env.example` as a reference if you want to export these values manually. Neo4j is optional: the app, vector RAG, local JSON fallback, and normal workflow execution still run when `GRAPH_RAG_ENABLED=false` or when Neo4j is offline.
 
 Start Neo4j with Docker:
 
@@ -138,6 +141,40 @@ Retriever nodes support:
 - `hybrid`: vector retrieval plus Neo4j graph evidence.
 
 Open Neo4j Browser at `http://127.0.0.1:7474` and log in with `neo4j` / `visualmas` to inspect the generated graph.
+
+## Optional PrimeKG Dataset Setup
+
+PrimeKG is not downloaded or imported during normal app startup. If you want to prepare the real dataset for future filtered biomedical subgraph work, manually place the official `kg.csv` at:
+
+```text
+data/primekg/kg.csv
+```
+
+See `docs/primekg_data_setup.md` for Windows PowerShell, Git Bash/Linux/macOS, and Python download options. Large PrimeKG files under `data/primekg/` are ignored by Git.
+
+To create a small disease-centered file for later import experiments without touching Neo4j:
+
+```bash
+python scripts/filter_primekg_subgraph.py --input data/primekg/kg.csv --disease "migraine" --depth 2 --max-nodes 1000 --max-relationships 3000 --output data/primekg/filtered_migraine.json
+```
+
+Dry-run and import only that filtered file:
+
+```bash
+python scripts/import_primekg_subgraph.py --input data/primekg/filtered_migraine.json --dry-run
+docker compose -f docker-compose.neo4j.yml up -d
+python scripts/import_primekg_subgraph.py --input data/primekg/filtered_migraine.json --clear-primekg-subgraph false
+```
+
+The backend also exposes optional PrimeKG workflow APIs for future frontend controls:
+
+```bash
+curl http://127.0.0.1:8000/api/primekg/status
+curl -X POST http://127.0.0.1:8000/api/primekg/filter-preview -H "Content-Type: application/json" -d "{\"csvPath\":\"data/primekg/kg.csv\",\"disease\":\"migraine\",\"depth\":2,\"maxNodes\":1000,\"maxRelationships\":3000}"
+curl -X POST http://127.0.0.1:8000/api/primekg/import-filtered -H "Content-Type: application/json" -d "{\"filteredPath\":\"data/primekg/previews/filtered_migraine.json\",\"dryRun\":true,\"clearExistingPrimeKG\":false}"
+```
+
+For a polished end-to-end demo, use `examples/primekg_migraine_graph_rag_workflow.json` and follow `docs/primekg_demo.md`.
 
 ## Optional Hugging Face Support
 
