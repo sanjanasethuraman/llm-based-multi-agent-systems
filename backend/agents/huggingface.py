@@ -1,74 +1,192 @@
-import json
-import os
+import json, os, logging
 from urllib import error, parse, request
 
+from backend.mcp_registry import McpClientRegistry
 from .base import AgentProvider
 
-
+logger = logging.getLogger(__name__)
 DEFAULT_HF_BASE_URL = "https://api-inference.huggingface.co"
 DEFAULT_HF_ROUTER_URL = "https://router.huggingface.co/v1"
 DEFAULT_HF_MODEL = "mistralai/Mistral-7B-Instruct-v0.3"
 
+MAX_ITERATIONS = 10
 
 class HuggingFaceProvider(AgentProvider):
     name = "huggingface"
 
-    async def run(self, config, incoming, mcp_registry, available_tools):
+    async def run(self, config, incoming, mcp_registry: McpClientRegistry, available_tools):
+        tool_calls = 0
+        sub_agent_calls = 0
+        called_tools = []
+        provider_logs = []
         name = config.get("name", "Agent")
         model = config.get("model") or DEFAULT_HF_MODEL
         token = get_huggingface_token(config)
         base_url = normalize_huggingface_base_url(config.get("baseUrl"))
-        prompt_input = stringify_incoming(incoming)
-        payload = {
-            "model": model,
-            "messages": [
-                {
-                    "role": "system",
-                    "content": config.get("systemPrompt", "You are a helpful assistant."),
-                },
-                {"role": "user", "content": prompt_input},
-            ],
-            "temperature": float(config.get("temperature", 0.2)),
-            "max_tokens": int(config.get("maxNewTokens") or 512),
-        }
 
         if not token:
             return (
                 f"[{name} | huggingface unavailable]\n"
                 "No Hugging Face token was configured. Add a token in the agent settings "
-                "or set HF_TOKEN / HUGGING_FACE_API_TOKEN before starting the server."
-            ), 0, 0, []
-
-        try:
-            data = json.dumps(payload).encode("utf-8")
-            req = request.Request(
-                f"{base_url}/chat/completions",
-                data=data,
-                headers={
-                    "Authorization": f"Bearer {token}",
-                    "Content-Type": "application/json",
-                },
-                method="POST",
+                "or set HF_TOKEN / HUGGING_FACE_API_TOKEN before starting the server.",
+                0, 0, called_tools, provider_logs
             )
-            with request.urlopen(req, timeout=120) as response:
-                result = json.loads(response.read().decode("utf-8"))
-            text = parse_huggingface_chat_completion(result)
-            return text or f"[{name} | huggingface] Empty response from {model}.", 0, 0
-        except error.HTTPError as exc:
-            detail = read_error_detail(exc)
-            return (
-                f"[{name} | huggingface error]\n"
-                f"Model: {model}\n"
-                f"HTTP {exc.code}: {detail}"
-            ), 0, 0, []
-        except error.URLError as exc:
-            return (
-                f"[{name} | huggingface unavailable]\n"
-                f"Could not reach Hugging Face Inference API for model {model}.\n"
-                f"Details: {exc}"
-            ), 0, 0, []
-        except Exception as exc:
-            return f"[{name} | huggingface error]\n{exc}", 0, 0, []
+        provider_logs.append({
+            "status": "info",
+            "message": f"Hugging Face provider using model '{model}' with {len(available_tools)} available tool(s).",
+        })
+
+        # build messages
+        messages = [{"role": "system", "content": config.get("systemPrompt", "You are a helpful assistant.")}]
+        if isinstance(incoming, dict):
+            msg_type = "user"
+            for src, item in incoming.items():
+                text = item.get("text") if isinstance(item, dict) else str(item)
+                ntype = item.get("type") if isinstance(item, dict) else None
+                if ntype == "input":    msg_type = "user"
+                elif ntype == "agent":  msg_type = "assistant"
+                elif ntype == "tool":   msg_type = "tool"
+            messages.append({"role": msg_type, "content": text})
+        else:
+            if isinstance(incoming, str):
+                messages.append({"role": "user", "content": incoming})
+            else:
+                try:
+                    for part in incoming:
+                        messages.append({"role": "user", "content": str(part)})
+                except Exception:
+                    messages.append({"role": "user", "content": str(incoming)})
+
+        # build tool map from registry — same as OllamaProvider
+        available = {(t["server_id"], t["tool_name"]) for t in available_tools}
+        hf_tools = []
+        tool_map = {}
+        for server_id, client in mcp_registry.all_clients().items():
+            for tool in await client.list_tools():
+                if (server_id, tool.name) in available:
+                    hf_tools.append(self._to_hf_schema(tool))
+                    tool_map[tool.name] = (server_id, client)
+
+        last_response = None
+
+        for _ in range(MAX_ITERATIONS):
+            payload = {
+                "model": model,
+                "messages": messages,
+                "temperature": float(config.get("temperature", 0.2)),
+                "max_tokens": int(config.get("maxNewTokens") or 512),
+            }
+            if hf_tools:
+                payload["tools"] = hf_tools
+                payload["tool_choice"] = "auto"
+
+            logger.info(f"{name} calling HuggingFace model '{model}'")
+
+            try:
+                data = json.dumps(payload).encode("utf-8")
+                req = request.Request(
+                    f"{base_url}/chat/completions",
+                    data=data,
+                    headers={
+                        "Authorization": f"Bearer {token}",
+                        "Content-Type": "application/json",
+                    },
+                    method="POST",
+                )
+                with request.urlopen(req, timeout=120) as response:
+                    result = json.loads(response.read().decode("utf-8"))
+            except error.HTTPError as exc:
+                detail = read_error_detail(exc)
+                return f"[{name} | huggingface error] HTTP {exc.code}: {detail}", tool_calls, sub_agent_calls, called_tools, provider_logs
+            except Exception as exc:
+                    return f"[{name} | huggingface error] {exc}", tool_calls, sub_agent_calls, called_tools, provider_logs
+
+            if not result.get("choices"):
+                return f"[{name} | huggingface] Empty response.", tool_calls, sub_agent_calls, called_tools, provider_logs
+
+            choice = result["choices"][0]
+            message = choice.get("message", {})
+            last_response = message.get("content") or ""
+
+            # append assistant message
+            messages.append({"role": "assistant", "content": last_response, "tool_calls": message.get("tool_calls")})
+
+            calls = message.get("tool_calls") or []
+            if not calls:
+                logger.info("No tool calls, breaking out of loop.")
+                provider_logs.append({
+                    "status": "info",
+                    "message": "Hugging Face returned no tool calls.",
+                })
+                break
+
+            # process tool calls
+            for tc in calls:
+                fn = tc.get("function", {})
+                tool_name = fn.get("name")
+                provider_logs.append({
+                        "status": "info",
+                        "message": f"Hugging Face requested tool '{tool_name}' with arguments {json.dumps(fn.get('arguments') or {})}.",
+                    })
+                try:
+                    arguments = json.loads(fn.get("arguments") or "{}")
+                except json.JSONDecodeError:
+                    arguments = {}
+
+                logger.info(f"Tool call: {tool_name} with arguments {arguments}")
+
+                if tool_name not in tool_map:
+                    messages.append({
+                        "role": "tool",
+                        "tool_call_id": tc.get("id", tool_name),
+                        "content": json.dumps({"error": f"Tool {tool_name} is not connected to this agent."}),
+                    })
+                    provider_logs.append({
+                            "status": "warning",
+                            "message": f"Hugging Face requested unknown tool '{tool_name}'.",
+                        })
+                    continue
+
+                server_id, client = tool_map[tool_name]
+                if str(server_id).startswith("sub-agent-"):
+                    sub_agent_calls += 1
+                    provider_logs.append({
+                            "status": "info",
+                            "message": f"Hugging Face requested sub-agent tool '{tool_name}' on server '{server_id}'.",
+                        })
+                else:
+                    tool_calls += 1
+                    provider_logs.append({
+                            "status": "info",
+                            "message": f"Hugging Face requested tool '{tool_name}' on server '{server_id}'.",
+                        })
+
+                called_tools.append({
+                    "server_id": server_id,
+                    "tool_name": tool_name,
+                })
+
+                tool_result = await client.call_tool(tool_name, arguments)
+                logger.info(f"Tool result: {tool_result}")
+
+                messages.append({
+                    "role": "tool",
+                    "tool_call_id": tc.get("id", tool_name),
+                    "content": json.dumps({"result": tool_result}),
+                })
+
+        return last_response, tool_calls, sub_agent_calls, called_tools, provider_logs
+
+    def _to_hf_schema(self, tool) -> dict:
+        """Convert an MCP Tool object to HuggingFace's expected tool schema."""
+        return {
+            "type": "function",
+            "function": {
+                "name": tool.name,
+                "description": tool.description,
+                "parameters": tool.inputSchema,
+            }
+        }
 
 
 def get_huggingface_token(config=None):
