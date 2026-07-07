@@ -280,7 +280,7 @@ async def _wait_for_port(port: int, timeout: float = 15.0):
     raise TimeoutError(f"Sub-agent on port {port} did not start within {timeout}s")
 
 
-async def setup_sub_agent_servers(nodes: dict, edges: list, mcp_registry):
+async def setup_sub_agent_servers(nodes: dict, edges: list, mcp_registry: McpClientRegistry):
     """
     Scan all nodes for sub_agent type.
     Spawn each as an HTTP MCP server on a free port.
@@ -298,7 +298,7 @@ async def setup_sub_agent_servers(nodes: dict, edges: list, mcp_registry):
         server_id = f"sub-agent-{node_id}"
 
         # skip if already connected (e.g. workflow re-run)
-        if server_id in mcp_registry._clients:
+        if server_id in mcp_registry.all_clients():
             logger.info(f"Sub-agent {server_id} already connected, skipping.")
             continue
 

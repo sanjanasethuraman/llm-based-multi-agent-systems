@@ -1,4 +1,5 @@
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+import concurrent.futures
 import errno
 import json
 import mimetypes
@@ -64,7 +65,6 @@ EXAMPLES_DIR = ROOT / "examples"
 WORKFLOW_FILE = DATA_DIR / "current_workflow.json"
 PYTHON_EXPORT_FILE = GENERATED_DIR / "generated_workflow.py"
 
-_mcp_client = None
 _loop: asyncio.AbstractEventLoop = None
 
 def _start_background_loop():
@@ -88,6 +88,37 @@ def _start_internal_mcp_server() -> int:
     _internal_mcp_proc = proc
     os.environ["INTERNAL_MCP_PORT"] = str(port)
     return port, proc
+
+def _run_in_new_loop(coro_factory, timeout=120):
+    """
+    Run an async function in a new event loop in a dedicated thread.
+    Never touches _loop — eliminates deadlock for nested proxy calls.
+    coro_factory: zero-argument callable returning a coroutine.
+    """
+    def _thread():
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            return loop.run_until_complete(coro_factory())
+        finally:
+            pending = asyncio.all_tasks(loop)
+            for task in pending:
+                task.cancel()
+            if pending:
+                try:
+                    loop.run_until_complete(
+                            asyncio.wait_for(
+                                    asyncio.gather(*pending, return_exceptions=True),
+                                    timeout=2.0,
+                                )
+                        )
+                except asyncio.TimeoutError:
+                    logger.error("Failed to cleanup pending tasks in a timely manner.")
+                    pass
+            loop.close()
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+        return executor.submit(_thread).result(timeout=timeout)
 
 class AppHandler(BaseHTTPRequestHandler):
 
@@ -225,7 +256,66 @@ class AppHandler(BaseHTTPRequestHandler):
                 return self._export_python_file(payload)
             if self.path == "/api/ingest-document":
                 return self._send_json(ingest_documents(payload))
-            self.send_error(404, "Not found")
+            if self.path == "/api/internal/call-tool":
+                server_id = payload.get("server_id")
+                tool_name = payload.get("tool_name")
+                arguments = payload.get("arguments", {})
+
+                config = registry._configs.get(server_id)
+                if not config:
+                    return self._send_json(
+                        {"error": f"Server '{server_id}' not found"}, status=404
+                    )
+
+                async def _call():
+                    from backend.agents.tool_client import McpToolClient
+                    client = McpToolClient.from_config(config)
+                    try:
+                        await client.__aenter__()
+                        result = await client.call_tool(tool_name, arguments)
+                        return {"result": result}
+                    except Exception as e:
+                        logger.error(f"call-tool failed {server_id}/{tool_name}: {e}")
+                        return {"error": str(e)}
+                    finally:
+                        try:
+                            await client.__aexit__(None, None, None)
+                        except Exception:
+                            pass
+
+                return self._send_json(_run_in_new_loop(_call, timeout=300))
+
+            if self.path == "/api/internal/list-tools":
+                server_id = payload.get("server_id")
+
+                config = registry._configs.get(server_id)
+                if not config:
+                    return self._send_json({"tools": []})
+
+                async def _list():
+                    from backend.agents.tool_client import McpToolClient
+                    client = McpToolClient.from_config(config)
+                    try:
+                        await client.__aenter__()
+                        tools = await client.list_tools()
+                        return {"tools": [
+                            {
+                                "name": t.name,
+                                "description": t.description,
+                                "inputSchema": t.inputSchema,
+                            }
+                            for t in tools
+                        ]}
+                    except Exception as e:
+                        logger.error(f"list-tools failed for {server_id}: {e}")
+                        return {"tools": []}
+                    finally:
+                        try:
+                            await client.__aexit__(None, None, None)
+                        except Exception:
+                            pass
+
+                return self._send_json(_run_in_new_loop(_list, timeout=10))
         except PrimeKGApiError as exc:
             self._send_json({"error": str(exc)}, status=400)
         except Exception as exc:
@@ -419,6 +509,7 @@ def main():
     host = os.environ.get("VISUAL_MAS_HOST", "127.0.0.1")
     preferred_port = int(os.environ.get("VISUAL_MAS_PORT", "8000"))
     server, port = create_server(host, preferred_port)
+    os.environ["MAIN_SERVER_URL"] = f"http://{host}:{port}"
     logger.info(f"Serving at http://{host}:{port}")
     try:
         server.serve_forever()
