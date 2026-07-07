@@ -19,16 +19,7 @@ class AgentNodeExecutor(NodeExecutor):
             return "", {"status": "error", "message": f"Agent provider '{provider_name}' not found."}
 
         result = await provider.run(config, incoming, mcp_registry=registry, available_tools=available_tools)
-        if len(result) == 5:
-            result, tool_calls, sub_agent_calls, called_tools, provider_logs = result
-        elif len(result) == 4:
-            result, tool_calls, sub_agent_calls, called_tools = result
-            provider_logs = []
-        else:
-            result, tool_calls, sub_agent_calls = result
-            called_tools = []
-            provider_logs = []
-
+        result, tool_calls, sub_agent_calls, called_tools, provider_logs = normalize_provider_result(result)
         context["stats"]["agentCalls"] += 1
         context["stats"]["toolCalls"] += tool_calls
         context["stats"]["subAgentCalls"] += sub_agent_calls
@@ -58,11 +49,15 @@ class AgentNodeExecutor(NodeExecutor):
 
 def normalize_provider_result(provider_result):
     if isinstance(provider_result, tuple):
-        if len(provider_result) == 3:
+        if len(provider_result) == 5:
             return provider_result
+        if len(provider_result) == 4:
+            return provider_result, []
+        if len(provider_result) == 3:
+            return provider_result, [], []
         if len(provider_result) == 2:
             result, tool_calls = provider_result
-            return result, tool_calls, 0
+            return result, tool_calls, 0, [], []
         if len(provider_result) == 1:
-            return provider_result[0], 0, 0
-    return provider_result, 0, 0
+            return provider_result[0], 0, 0, [], []
+    return provider_result, 0, 0, [], []
