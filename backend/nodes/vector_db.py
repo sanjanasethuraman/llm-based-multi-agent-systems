@@ -1,4 +1,5 @@
 from .base import NodeExecutor
+from backend.utils import log_node
 
 class VectorDBNodeExecutor(NodeExecutor):
     node_type = "vector_db"

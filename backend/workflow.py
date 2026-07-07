@@ -151,6 +151,7 @@ async def run_workflow(workflow, mcp_registry: McpClientRegistry):
 
     values = {}
     logs = []
+    node_logs = defaultdict(list)
 
     node_results = {}
     retrievals = []
@@ -169,9 +170,11 @@ async def run_workflow(workflow, mcp_registry: McpClientRegistry):
         "edges": edges,
         "values": values,
         "logs": logs,
+        "nodeLogs": node_logs,
         "stats": stats,
         "retrievals": retrievals,
         "mcpCalls": [],
+        "agentToolCalls": [],
         "mcp_registry": mcp_registry,
         }
     
@@ -208,9 +211,10 @@ async def run_workflow(workflow, mcp_registry: McpClientRegistry):
             "type": node["type"],
             "message": message,
             "durationMs": round((time.perf_counter() - node_started) * 1000, 2),
-            "outputPreview": preview_text(result),
+            "outputPreview": preview_text(result, limit=None),
             "matches": metadata.get("matches", []),
             "mcpCall": metadata.get("mcpCall"),
+            "logs": context["nodeLogs"].get(node_id, []),
         }
         logs.append(log_item(node_id, node.get("type"), message or f"{node.get('type')} node executed.", status))
 
@@ -219,7 +223,7 @@ async def run_workflow(workflow, mcp_registry: McpClientRegistry):
 
     return {
         "output": final_output,
-        "logs": logs,
+        "logs": context["nodeLogs"],
         "stats": {
             **stats,
             "runtimeMs": runtime_ms,

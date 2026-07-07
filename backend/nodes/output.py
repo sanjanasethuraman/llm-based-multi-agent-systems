@@ -1,5 +1,5 @@
 from .base import NodeExecutor
-from backend.utils import collect_incoming_map
+from backend.utils import collect_incoming_map, log_node
 
 class OutputNodeExecutor(NodeExecutor):
     node_type = "output"
@@ -25,4 +25,5 @@ class OutputNodeExecutor(NodeExecutor):
             output_text = "\n\n".join(parts)
 
         message = f"Output node collected results from {len(incoming_map)} incoming sources."
+        log_node(node["id"], context, message, status="completed", node_type=node.get("type"))
         return output_text, {"status": "completed", "message": message}

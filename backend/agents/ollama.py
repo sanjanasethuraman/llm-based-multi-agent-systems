@@ -14,8 +14,15 @@ class OllamaProvider(AgentProvider):
     async def run(self, config, incoming, mcp_registry, available_tools: list[dict]):
         tool_calls = 0
         sub_agent_calls = 0
+        called_tools = []
+        provider_logs = []
         model = config.get("model", "llama3.2:1b")
         messages = [{"role": "system", "content": config.get("systemPrompt", "You are a helpful assistant.")}] 
+
+        provider_logs.append({
+            "status": "info",
+            "message": f"Ollama provider using model '{model}' with {len(available_tools)} available tool(s).",
+        })
 
         if isinstance(incoming, dict):
             type = "user"
@@ -68,19 +75,40 @@ class OllamaProvider(AgentProvider):
                 for tool_call in response.message.tool_calls:
                     name = tool_call.function.name
                     logger.info(f"Tool call: {name} with arguments {tool_call.function.arguments}")
+                    provider_logs.append({
+                        "status": "info",
+                        "message": f"Ollama requested tool '{name}' with arguments {json.dumps(tool_call.function.arguments or {})}.",
+                    })
                     if name not in tool_map:
                         messages.append({
                             "role": "tool",
                             "name": name,
                             "content": json.dumps({"error": f"Tool {name} is not connected to this agent."}),
                         })
+                        provider_logs.append({
+                            "status": "warning",
+                            "message": f"Ollama requested unknown tool '{name}'.",
+                        })
                         continue
                     server_id, client = tool_map[name]
                     # Distinguish between normal tools and sub-agent tools by server id
                     if str(server_id).startswith("sub-agent-"):
                         sub_agent_calls += 1
+                        provider_logs.append({
+                            "status": "info",
+                            "message": f"Ollama requested sub-agent tool '{name}' on server '{server_id}'.",
+                        })
                     else:
                         tool_calls += 1
+                        provider_logs.append({
+                            "status": "info",
+                            "message": f"Ollama requested tool '{name}' on server '{server_id}'.",
+                        })
+
+                    called_tools.append({
+                        "server_id": server_id,
+                        "tool_name": name,
+                    })
 
                     result = await client.call_tool(name, tool_call.function.arguments or {})
                     
@@ -91,8 +119,12 @@ class OllamaProvider(AgentProvider):
                     })
             else:
                 logger.info("No tool calls, breaking out of loop.")
+                provider_logs.append({
+                    "status": "info",
+                    "message": "Ollama returned no tool calls.",
+                })
                 break
-        return response.message.content, tool_calls, sub_agent_calls
+        return response.message.content, tool_calls, sub_agent_calls, called_tools, provider_logs
     
     def _to_ollama_schema(self, tool) -> dict:
         """Convert an MCP Tool object to Ollama's expected tool schema."""

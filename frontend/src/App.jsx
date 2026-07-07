@@ -37,6 +37,8 @@ import {
 } from "./workflow.js";
 
 import McpServersPanel from "./components/panels/McpServersPanel.jsx"
+import LogsPanel from "./components/panels/LogsPanel.jsx"
+import StatusBadge from "./components/StatusBadge.jsx";
 import WorkflowTabs from "./components/WorkflowTabs.jsx"
 import ExecutionModeControl from "./components/ExecutionModeControl.jsx"
 import ComparisonReport from "./components/ComparisonReport.jsx"
@@ -109,7 +111,6 @@ function WorkflowApp() {
   const [generatedCode, setGeneratedCode] = useState("Click Generate Python.");
   const [nodeResults, setNodeResults] = useState({});
   const [retrievals, setRetrievals] = useState([]);
-  const [mcpCalls, setMcpCalls] = useState([]);
   const [mcpTools, setMcpTools] = useState([]);
   const [mcpServers, setMcpServers] = useState([]);
   const [examples, setExamples] = useState([]);
@@ -437,7 +438,6 @@ function WorkflowApp() {
       updateTabWorkflow(activeTabId, nextWorkflow);
       setNodeResults({});
       setRetrievals([]);
-      setMcpCalls([]);
       setSelected({ kind: "node", id: nextWorkflow.nodes[0]?.id || "" });
       setStatusMessage(`Loaded example: ${result.label}.`);
     } catch (error) {
@@ -457,7 +457,6 @@ function WorkflowApp() {
       updateTabWorkflow(activeTabId, nextWorkflow);
       setNodeResults({});
       setRetrievals([]);
-      setMcpCalls([]);
       setSelected({ kind: "node", id: nextWorkflow.nodes[0]?.id || "" });
       setStatusMessage(`Loaded workflow from ${result.path}.`);
     } catch (error) {
@@ -497,7 +496,6 @@ function WorkflowApp() {
       setLogs([]);
       setStats(null);
       setRetrievals([]);
-      setMcpCalls([]);
       setNodeResults(
         Object.fromEntries(
           workflow.nodes.map((node) => [
@@ -512,7 +510,6 @@ function WorkflowApp() {
       setLogs(result.logs || []);
       setStats(result.stats || null);
       setRetrievals(result.retrievals || []);
-      setMcpCalls(result.mcpCalls || []);
       setNodeResults(result.nodeResults || {});
       setStatusMessage("Workflow run completed.");
     } catch (error) {
@@ -873,9 +870,8 @@ function WorkflowApp() {
         onRefresh={refreshMcpTools}
       />
 
-      <ResultPanels output={output} logs={logs} stats={stats} nodeResults={nodeResults} retrievals={retrievals} />
+      <ResultPanels output={output} logs={logs} stats={stats} nodeResults={nodeResults} retrievals={retrievals} workflow={workflow} />
       <RetrievalPanel retrievals={retrievals} />
-      <McpCallsPanel calls={mcpCalls} />
 
       {comparisonReports.length > 0 && (
         <section className="comparison-panel">
@@ -1545,48 +1541,39 @@ function RagPanel({
   );
 }
 
-function ResultPanels({ output, logs, stats, nodeResults, retrievals }) {
-  const [selectedLogFilter, setSelectedLogFilter] = useState("all");
-  const [searchTerm, setSearchTerm] = useState("");
-  const [showFullOutput, setShowFullOutput] = useState(false);
+function ResultPanels({ output, logs, stats, nodeResults, retrievals, workflow}) {
+  const [showFullOutput, setShowFullOutput] = useState(true);
   const [copyStatus, setCopyStatus] = useState("");
   const [resultsTab, setResultsTab] = useState("final");
 
-  const nodes = useMemo(
-    () =>
-      Object.entries(nodeResults || {}).map(([id, result]) => ({
-        id,
-        ...result,
-      })),
-    [nodeResults],
-  );
-
-  const nodesDisplayed = nodes.filter((node) => node.outputPreview || node.message || node.status);
-
   const logCounts = useMemo(() => {
-    return logs.reduce(
-      (acc, log) => {
-        const status = log.status || "completed";
-        acc[status] = (acc[status] || 0) + 1;
-        acc.all += 1;
+    return Object.values(logs || []).reduce(
+      (acc, nodeLogs) => {
+        nodeLogs.forEach((log) => {
+          const status = log.status || "completed";
+          acc[status] = (acc[status] || 0) + 1;
+          acc.all += 1;
+        });
         return acc;
       },
-      { all: 0, completed: 0, warning: 0, error: 0 },
+      { all: 0, completed: 0, info: 0, warning: 0, error: 0 },
     );
   }, [logs]);
 
-  const filteredLogs = useMemo(() => {
-    return logs.filter((log) => {
-      if (selectedLogFilter !== "all" && (log.status || "completed") !== selectedLogFilter) {
-        return false;
-      }
-      if (!searchTerm.trim()) {
-        return true;
-      }
-      const needle = searchTerm.toLowerCase();
-      return `${log.nodeId} ${log.message} ${log.type || ""}`.toLowerCase().includes(needle);
-    });
-  }, [logs, selectedLogFilter, searchTerm]);
+  const nodes = useMemo(
+    () =>
+      Object.entries(nodeResults || {}).map(([id, result]) => {
+        const node = workflow.nodes.find((n) => n.id === id);
+        return {
+          id,
+          label: node?.label,
+          ...result,
+        };
+      }),
+    [nodeResults, workflow.nodes],
+  );
+
+  const nodesDisplayed = nodes.filter((node) => node.outputPreview || node.message || node.status);
 
   const handleCopyOutput = async () => {
     try {
@@ -1599,7 +1586,7 @@ function ResultPanels({ output, logs, stats, nodeResults, retrievals }) {
     }
   };
 
-  const outputPreview = showFullOutput ? output : output?.slice(0, 1200) || "";
+  const outputPreview = output;
   const canShowMore = output && output.length > 1200;
 
   return (
@@ -1674,8 +1661,8 @@ function ResultPanels({ output, logs, stats, nodeResults, retrievals }) {
                 <article key={node.id} className="node-result-item">
                   <div className="node-result-header">
                     <div>
-                      <strong>{node.id}</strong>
-                      <span>{node.type}</span>
+                      <strong>{node.label}</strong>
+                      <span>{node.type}: {node.id}</span>
                     </div>
                     <StatusBadge status={node.status || "idle"} />
                   </div>
@@ -1693,72 +1680,9 @@ function ResultPanels({ output, logs, stats, nodeResults, retrievals }) {
           {copyStatus && <div className="copy-feedback">{copyStatus}</div>}
         </div>
       </section>
-
-      <section className="logs-panel">
-        <div className="section-header">
-          <div>
-            <h2>Logs</h2>
-            <p>Filter and search execution logs for better insight.</p>
-          </div>
-        </div>
-        <div className="log-toolbar">
-          <div className="log-filters">
-            {[
-              { key: "all", label: `All (${logCounts.all})` },
-              { key: "completed", label: `Done (${logCounts.completed})` },
-              { key: "warning", label: `Warn (${logCounts.warning})` },
-              { key: "error", label: `Error (${logCounts.error})` },
-            ].map((filter) => (
-              <button
-                key={filter.key}
-                type="button"
-                className={`filter-button ${selectedLogFilter === filter.key ? "active" : ""}`}
-                onClick={() => setSelectedLogFilter(filter.key)}
-              >
-                {filter.label}
-              </button>
-            ))}
-          </div>
-          <input
-            className="log-search"
-            placeholder="Search logs"
-            value={searchTerm}
-            onChange={(event) => setSearchTerm(event.target.value)}
-          />
-        </div>
-        <div className="log-summary-grid">
-          <div className="log-stat-card">
-            <strong>{filteredLogs.length}</strong>
-            <span>Shown</span>
-          </div>
-          <div className="log-stat-card">
-            <strong>{logCounts.error}</strong>
-            <span>Total errors</span>
-          </div>
-          <div className="log-stat-card">
-            <strong>{logCounts.warning}</strong>
-            <span>Total warnings</span>
-          </div>
-        </div>
-        <div className="log-list">
-          {filteredLogs.length ? (
-            filteredLogs.map((item, index) => (
-              <article key={`${item.nodeId}-${index}`} className={`log-entry ${item.status || "completed"}`}>
-                <div className="log-entry-header">
-                  <StatusBadge status={item.status || "completed"} />
-                  <span className="log-entry-meta">{item.nodeId}</span>
-                </div>
-                <p>{item.message}</p>
-              </article>
-            ))
-          ) : (
-            <p className="log-empty">No logs match the current filter.</p>
-          )}
-        </div>
-      </section>
-
+      <LogsPanel logs={logs} logCounts={logCounts} />
       <WorkflowStatsPanel stats={stats} retrievals={retrievals} />
-      <NodeStatsPanel nodeResults={nodeResults} stats={stats} />
+      <NodeStatsPanel nodeResults={nodeResults} stats={stats} workflow={workflow} />
     </section>
   );
 }
@@ -1845,14 +1769,19 @@ function WorkflowStatsPanel({ stats, retrievals }) {
   );
 }
 
-function NodeStatsPanel({ nodeResults, stats }) {
+function NodeStatsPanel({ nodeResults, stats, workflow }) {
   const nodes = useMemo(
     () =>
-      Object.entries(nodeResults || {}).map(([id, result]) => ({
-        id,
-        ...result,
-      })),
-    [nodeResults],
+      Object.entries(nodeResults || {}).map(([id, result]) => {
+        const node = workflow.nodes.find((n) => n.id === id);
+        return {
+          id,
+          label: node?.label,
+          type: node?.type,
+          ...result,
+        };
+      }),
+    [nodeResults, workflow.nodes],
   );
 
   const [activeTab, setActiveTab] = useState("overview");
@@ -1906,10 +1835,10 @@ function NodeStatsPanel({ nodeResults, stats }) {
                 onMouseLeave={() => setFocusedNode(null)}
               >
                 <div className="node-stat-summary-header">
-                  <strong>{node.id}</strong>
+                  <strong>{node.label}</strong>
                   <StatusBadge status={node.status || "idle"} />
                 </div>
-                <span>{node.type}</span>
+                <span>{node.type}: {node.id}</span>
                 <div className="node-stat-summary-values">
                   <strong>{(node.durationMs || 0).toFixed(2)}ms</strong>
                   <span>{node.outputPreview ? "Output available" : "No output"}</span>
@@ -1930,9 +1859,9 @@ function NodeStatsPanel({ nodeResults, stats }) {
               >
                 <span>{index + 1}</span>
                 <div>
-                  <strong>{node.id}</strong>
+                  <strong>{node.label}</strong>
                   <div className="node-ranking-meta">
-                    <span>{node.type}</span>
+                    <span>{node.type}: {node.id}</span>
                     <span>{(node.durationMs || 0).toFixed(2)}ms</span>
                   </div>
                 </div>
@@ -1965,8 +1894,8 @@ function NodeStatsPanel({ nodeResults, stats }) {
                 onMouseLeave={() => setFocusedNode(null)}
               >
                 <div className="chart-label">
-                  <strong>{node.id}</strong>
-                  <span>{node.type}</span>
+                  <strong>{node.label}</strong>
+                  <span>{node.type}: {node.id}</span>
                 </div>
                 <div className="chart-bar">
                   <div
@@ -2004,7 +1933,7 @@ function NodeStatsPanel({ nodeResults, stats }) {
           <span>Avg node duration</span>
         </div>
         <div className="stat-card">
-          <strong>{nodesSorted[0]?.id || "-"}</strong>
+          <strong>{nodesSorted[0]?.label || "-"}</strong>
           <span>Slowest node</span>
         </div>
       </div>
@@ -2152,43 +2081,6 @@ function RetrievalPanel({ retrievals }) {
     </section>
   );
 }
-
-function McpCallsPanel({ calls }) {
-  return (
-    <section className="mcp-panel">
-      <div className="section-header">
-        <div>
-          <h2>MCP Calls</h2>
-          <p>{calls.length ? `${calls.length} MCP tool call(s) executed.` : "No MCP tool run yet."}</p>
-        </div>
-      </div>
-      <div className="mcp-call-grid">
-        {calls.map((call, index) => (
-          <article key={`${call.nodeId}-${call.toolId}-${call.timestamp || index}`}>
-            <div>
-              <strong>{call.toolId}</strong>
-              <span>{call.server || "demo"}</span>
-              <span>{call.nodeId}</span>
-            </div>
-            <pre>{JSON.stringify({ arguments: call.arguments, result: call.result }, null, 2)}</pre>
-          </article>
-        ))}
-      </div>
-    </section>
-  );
-}
-
-function StatusBadge({ status }) {
-  const labels = {
-    idle: "Idle",
-    running: "Running",
-    completed: "Done",
-    warning: "Warn",
-    error: "Error",
-  };
-  return <span className={`status-badge ${status}`}>{labels[status] || status}</span>;
-}
-
 
 function selectionLabel(node, edge) {
   if (node) {
