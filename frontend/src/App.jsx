@@ -29,6 +29,7 @@ import McpServersPanel from "./components/panels/McpServersPanel.jsx"
 import AppShell from "./components/AppShell.jsx"
 import LogsPanel from "./components/panels/LogsPanel.jsx"
 import StatusBadge from "./components/StatusBadge.jsx";
+import AppShell from "./components/AppShell.jsx"
 import WorkflowTabs from "./components/WorkflowTabs.jsx"
 import ExecutionModeControl from "./components/ExecutionModeControl.jsx"
 import ComparisonReport from "./components/ComparisonReport.jsx"
