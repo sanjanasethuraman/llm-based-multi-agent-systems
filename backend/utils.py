@@ -151,7 +151,7 @@ def get_available_tools(node_id, edges, nodes) -> list[dict]:
 
 def is_tool_managed_by_agent(node_id, edges, nodes):
     return any(
-        edge["target"] == node_id and nodes.get(edge["source"], {}).get("type") == "agent"
+        edge["target"] == node_id and nodes.get(edge["source"], {}).get("type") in {"agent", "sub_agent"}
         for edge in edges
     )
 

@@ -319,6 +319,7 @@ class AppHandler(BaseHTTPRequestHandler):
         except PrimeKGApiError as exc:
             self._send_json({"error": str(exc)}, status=400)
         except Exception as exc:
+            logger.exception(f"Request failed: {self.path}")
             self._send_json({"error": str(exc)}, status=400)
 
     def _read_json(self):

@@ -1,11 +1,15 @@
 from .base import NodeExecutor
 from backend.utils import collect_incoming_map, get_available_tools, log_node
+from backend.utils import is_tool_managed_by_agent
 from backend.agents import get_agent_provider
 
 class AgentNodeExecutor(NodeExecutor):
     node_type = "agent"
 
     async def execute(self, node, context):
+        if node.get("type") == "sub_agent" and is_tool_managed_by_agent(node["id"], context["edges"], context["nodes"]):
+            return "", {"status": "skipped", "message": "Sub-agent is managed by an agent and is not executed automatically."}
+
         config = node.get("config", {})
         incoming = collect_incoming_map(node["id"], context["edges"], context["values"], context["nodes"])
         registry = context["mcp_registry"]

@@ -1,11 +1,15 @@
 from mcp import ClientSession, StdioServerParameters, Tool
 from mcp.client.stdio import stdio_client
 from mcp.client.streamable_http import streamable_http_client
-from httpx import AsyncClient
+from httpx import AsyncClient, Timeout
 import logging
 from backend.mcp_registry import McpServerConfig
 
 logger = logging.getLogger(__name__)
+
+
+def _is_process_exit(exc):
+    return isinstance(exc, (KeyboardInterrupt, SystemExit))
 
 
 class McpToolClient:
@@ -43,10 +47,14 @@ class McpToolClient:
             await self._session.__aenter__()
             await self._session.initialize()
         else:
-            async_client = AsyncClient(headers=self._config["headers"])
+            self._http_client = AsyncClient(
+                headers=self._config["headers"],
+                timeout=Timeout(650.0, connect=10.0),
+            )
             self._streams = streamable_http_client(
                 self._config["url"],
-                http_client=async_client,
+                http_client=self._http_client,
+                terminate_on_close=True,
             )
             read, write, _ = await self._streams.__aenter__()
             self._session = ClientSession(read, write)
@@ -55,18 +63,29 @@ class McpToolClient:
         return self
 
     async def __aexit__(self, *args):
-        if self._config["transport"] == "http":
-            logger.debug("HTTP client: skipping DELETE on exit")
-            return
-        
         try:
-            await self._session.__aexit__(*args)
-        except Exception as e:
+            if self._session:
+                await self._session.__aexit__(*args)
+        except BaseException as e:
+            if _is_process_exit(e):
+                raise
             logger.debug(f"Session cleanup: {e}")
-        try:
-            await self._streams.__aexit__(*args)
-        except Exception as e:
-            logger.debug(f"Stream cleanup: {e}")
+        finally:
+            try:
+                if getattr(self, "_streams", None):
+                    await self._streams.__aexit__(*args)
+            except BaseException as e:
+                if _is_process_exit(e):
+                    raise
+                logger.debug(f"Stream cleanup: {e}")
+            finally:
+                if getattr(self, "_http_client", None):
+                    try:
+                        await self._http_client.aclose()
+                    except BaseException as e:
+                        if _is_process_exit(e):
+                            raise
+                        logger.debug(f"HTTP client cleanup: {e}")
 
     async def list_tools(self) -> list[Tool]:
         result = await self._session.list_tools()

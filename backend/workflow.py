@@ -229,6 +229,16 @@ async def run_workflow(workflow, mcp_registry: McpClientRegistry):
     runtime_ms = round((time.perf_counter() - started) * 1000, 2)
 
     await asyncio.sleep(0.5)  # allow sub-agent servers to finish any pending requests
+    for server_id, client in list(mcp_registry._clients.items()):
+        if server_id.startswith("sub-agent-"):
+            try:
+                await client.__aexit__(None, None, None)
+            except BaseException as exc:
+                if isinstance(exc, (KeyboardInterrupt, SystemExit)):
+                    raise
+                logger.debug(f"Sub-agent client cleanup failed for {server_id}: {exc}")
+            mcp_registry._clients.pop(server_id, None)
+            mcp_registry._configs.pop(server_id, None)
     for server_id, proc in list(mcp_registry._processes.items()):
         proc.terminate()
         logger.info(f"Terminated sub-agent {server_id} pid={proc.pid}")
