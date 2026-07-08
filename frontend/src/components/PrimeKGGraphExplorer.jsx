@@ -85,10 +85,11 @@ export default function PrimeKGGraphExplorer({ graph, retrievals = [], loading =
     }
     const observer = new ResizeObserver(([entry]) => {
       const width = Math.max(520, Math.floor(entry.contentRect.width));
+      const height = Math.max(520, Math.floor(entry.contentRect.height || GRAPH_HEIGHT));
       setSize((current) => (
-        current.width === width && current.height === GRAPH_HEIGHT
+        current.width === width && current.height === height
           ? current
-          : { width, height: GRAPH_HEIGHT }
+          : { width, height }
       ));
     });
     observer.observe(element);
@@ -173,10 +174,6 @@ export default function PrimeKGGraphExplorer({ graph, retrievals = [], loading =
   const handleToggleNodeType = useCallback((type) => toggleSet(setHiddenNodeTypes, type), []);
   const handleToggleRelationType = useCallback((type) => toggleSet(setHiddenRelationTypes, type), []);
   const handleHoverLink = useCallback((link) => setHoveredLink(link), []);
-  const handleSelectLink = useCallback((link) => {
-    setSelectedLink(link);
-    setSelectedNode(null);
-  }, []);
   const handleSelectEvidencePath = useCallback((path) => {
     setSelectedPath(path);
     const firstNode = path?.nodes?.[0];
@@ -184,6 +181,21 @@ export default function PrimeKGGraphExplorer({ graph, retrievals = [], loading =
       selectAndFocusNode(firstNode);
     }
   }, [selectAndFocusNode]);
+
+  useEffect(() => {
+    const handleExternalHighlight = (event) => {
+      const path = normalizeEvidencePath(event.detail?.path || {}, event.detail?.path?.pathId || event.detail?.path?.id || "external-answer-path");
+      if (!path.pathText && !path.nodes.length) return;
+      setSelectedPath(path);
+      setFocusMode("evidence");
+      const firstVisibleNode = path.nodes.find((node) => graphData.nodes.some((graphNode) => graphNode.id === node.id));
+      if (firstVisibleNode) {
+        selectAndFocusNode(firstVisibleNode);
+      }
+    };
+    window.addEventListener("primekg:highlight-path", handleExternalHighlight);
+    return () => window.removeEventListener("primekg:highlight-path", handleExternalHighlight);
+  }, [graphData.nodes, selectAndFocusNode]);
 
   if (loading) {
     return <GraphState title="Loading PrimeKG graph" message="Preparing the bounded biomedical subgraph view." />;
@@ -391,7 +403,6 @@ export default function PrimeKGGraphExplorer({ graph, retrievals = [], loading =
           selected={Boolean(selectedNode || selectedLink)}
           onFocusNode={selectAndFocusNode}
           onHoverLink={handleHoverLink}
-          onSelectLink={handleSelectLink}
         />
       </div>
 

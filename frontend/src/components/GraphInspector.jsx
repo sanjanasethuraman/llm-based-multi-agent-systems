@@ -10,7 +10,6 @@ export default function GraphInspector({
   selected,
   onFocusNode,
   onHoverLink,
-  onSelectLink,
 }) {
   const resolvedLink = link ? normalizeLinkForDisplay(link, nodesById) : null;
   const grouped = node ? groupRelationships(adjacency[node.id] || [], nodesById) : null;
@@ -33,7 +32,6 @@ export default function GraphInspector({
           connectedCount={connectedCount}
           onFocusNode={onFocusNode}
           onHoverLink={onHoverLink}
-          onSelectLink={onSelectLink}
         />
       ) : (
         <div className="primekg-inspector-empty">
@@ -45,7 +43,7 @@ export default function GraphInspector({
   );
 }
 
-function NodeDetails({ node, grouped, connectedCount, onFocusNode, onHoverLink, onSelectLink }) {
+function NodeDetails({ node, grouped, connectedCount, onFocusNode, onHoverLink }) {
   const relationGroups = groupByRelation([...(grouped?.incoming || []), ...(grouped?.outgoing || [])]);
   return (
     <div className="primekg-inspector-content">
@@ -69,8 +67,8 @@ function NodeDetails({ node, grouped, connectedCount, onFocusNode, onHoverLink, 
         Focus neighborhood
       </button>
 
-      <RelationshipGroup title="Outgoing" items={grouped?.outgoing || []} onFocusNode={onFocusNode} onHoverLink={onHoverLink} onSelectLink={onSelectLink} />
-      <RelationshipGroup title="Incoming" items={grouped?.incoming || []} onFocusNode={onFocusNode} onHoverLink={onHoverLink} onSelectLink={onSelectLink} />
+      <RelationshipGroup title="Outgoing" items={grouped?.outgoing || []} onFocusNode={onFocusNode} onHoverLink={onHoverLink} />
+      <RelationshipGroup title="Incoming" items={grouped?.incoming || []} onFocusNode={onFocusNode} onHoverLink={onHoverLink} />
 
       <section className="primekg-relation-summary">
         <h4>By relation type</h4>
@@ -118,7 +116,7 @@ function RelationshipDetails({ relationship }) {
   );
 }
 
-function RelationshipGroup({ title, items, onFocusNode, onHoverLink, onSelectLink }) {
+function RelationshipGroup({ title, items, onFocusNode, onHoverLink }) {
   return (
     <section className="primekg-relationship-group">
       <h4>{title}</h4>

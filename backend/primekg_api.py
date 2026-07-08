@@ -418,7 +418,11 @@ def primekg_graph(payload):
         )
 
     disease = str(payload.get("disease") or "").strip()
-    depth = bounded_int(payload.get("depth", 2), 1, API_MAX_DEPTH, "depth")
+    anchor_node_ids = normalize_anchor_values(payload.get("anchorNodeIds") or payload.get("anchorIds") or [])
+    anchor_node_names = normalize_anchor_values(payload.get("anchorNodeNames") or payload.get("anchorNames") or [])
+    answer_graph_requested = bool(anchor_node_ids or anchor_node_names)
+    max_depth = 2 if answer_graph_requested else API_MAX_DEPTH
+    depth = bounded_int(payload.get("depth", 2), 1, max_depth, "depth")
     max_nodes = bounded_int(payload.get("maxNodes", VISUAL_DEFAULT_NODES), 1, VISUAL_MAX_NODES, "maxNodes")
     max_relationships = bounded_int(
         payload.get("maxRelationships", VISUAL_DEFAULT_RELATIONSHIPS),
@@ -439,7 +443,14 @@ def primekg_graph(payload):
                         graph_status,
                     )
 
-                seeds = find_visual_seed_nodes(session, disease)
+                seeds = find_visual_anchor_nodes(session, anchor_node_ids, anchor_node_names) if answer_graph_requested else find_visual_seed_nodes(session, disease)
+                if answer_graph_requested and not seeds:
+                    return empty_visual_graph(
+                        "empty",
+                        "No imported PrimeKG nodes matched the answer graph anchors.",
+                        graph_status,
+                        disease=disease,
+                    )
                 if disease and not seeds:
                     return empty_visual_graph(
                         "empty",
@@ -453,12 +464,65 @@ def primekg_graph(payload):
         return empty_visual_graph("error", f"PrimeKG graph viewer failed: {exc}", graph_status, disease=disease)
 
     graph = visual_graph_from_rows(rows, disease, depth, max_nodes, max_relationships, seeds)
+    if answer_graph_requested:
+        graph["mode"] = "answer"
+        graph["label"] = "Answer Graph"
+        graph["answerGraph"] = {
+            "anchorNodeIds": anchor_node_ids,
+            "anchorNodeNames": anchor_node_names,
+            "questionSnippet": str(payload.get("question") or "")[:220],
+        }
+        graph["message"] = "Answer graph loaded." if graph.get("status") == "available" else graph.get("message")
+    else:
+        graph["mode"] = "disease"
+        graph["label"] = "Disease Graph"
     graph["neo4j"] = {
         "connected": graph_status.get("connected"),
         "uri": graph_status.get("uri"),
         "database": graph_status.get("database"),
     }
     return graph
+
+
+def normalize_anchor_values(values, max_items=20):
+    if isinstance(values, str):
+        values = [values]
+    if not isinstance(values, list):
+        return []
+    anchors = []
+    for value in values:
+        text = str(value or "").strip()
+        if not text:
+            continue
+        text = text[:200]
+        if text not in anchors:
+            anchors.append(text)
+        if len(anchors) >= max_items:
+            break
+    return anchors
+
+
+def find_visual_anchor_nodes(session, anchor_node_ids=None, anchor_node_names=None):
+    anchor_node_ids = normalize_anchor_values(anchor_node_ids or [])
+    anchor_node_names = [value.lower() for value in normalize_anchor_values(anchor_node_names or [])]
+    if not anchor_node_ids and not anchor_node_names:
+        return []
+    return session.run(
+        """
+        MATCH (n:PrimeNode)
+        WHERE coalesce(n.prime_id, n.id) IN $anchorIds
+           OR any(name IN $anchorNames WHERE toLower(coalesce(n.name, '')) = name)
+           OR any(name IN $anchorNames WHERE toLower(coalesce(n.name, '')) CONTAINS name)
+        RETURN coalesce(n.prime_id, n.id) AS id,
+               n.name AS name,
+               coalesce(n.node_type, n.type, 'other') AS type
+        ORDER BY CASE coalesce(n.node_type, n.type, 'other') WHEN 'disease' THEN 0 ELSE 1 END,
+                 toLower(coalesce(n.name, ''))
+        LIMIT 20
+        """,
+        anchorIds=anchor_node_ids,
+        anchorNames=anchor_node_names,
+    ).data()
 
 
 def find_visual_seed_nodes(session, disease):

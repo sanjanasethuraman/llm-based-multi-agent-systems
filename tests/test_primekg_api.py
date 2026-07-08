@@ -113,6 +113,97 @@ class PrimeKGApiTests(unittest.TestCase):
         self.assertEqual(graph["nodes"][0]["type"], "disease")
         self.assertEqual(graph["relationships"][0]["label"], "indication")
 
+    def test_primekg_graph_accepts_answer_anchor_node_ids(self):
+        session = FakeGraphSession([
+            FakeSingleResult({"count": 2}),
+            FakeDataResult([
+                {"id": "DISEASE:fake-migraine", "name": "Example Migraine", "type": "disease"},
+                {"id": "DRUG:fake-cgrp", "name": "Fictional CGRP Blocker", "type": "drug"},
+            ]),
+            FakeDataResult([
+                {
+                    "nodes": [
+                        {"id": "DISEASE:fake-migraine", "name": "Example Migraine", "type": "disease"},
+                        {"id": "DRUG:fake-cgrp", "name": "Fictional CGRP Blocker", "type": "drug"},
+                    ],
+                    "relationships": [
+                        {
+                            "id": "rel-1",
+                            "source": "DISEASE:fake-migraine",
+                            "target": "DRUG:fake-cgrp",
+                            "displayRelation": "indication",
+                        }
+                    ],
+                }
+            ]),
+        ])
+
+        with patch.object(primekg_api, "graph_store_status", return_value={"enabled": True, "connected": True}), \
+             patch.object(primekg_api, "get_driver", return_value=FakeGraphDriver(session)):
+            graph = primekg_api.primekg_graph({
+                "anchorNodeIds": ["DISEASE:fake-migraine", "DRUG:fake-cgrp"],
+                "depth": 2,
+                "maxNodes": 300,
+                "maxRelationships": 600,
+                "question": "What drugs are connected to migraine?",
+            })
+
+        self.assertEqual(graph["status"], "available")
+        self.assertEqual(graph["mode"], "answer")
+        self.assertEqual(graph["label"], "Answer Graph")
+        self.assertEqual(graph["answerGraph"]["anchorNodeIds"], ["DISEASE:fake-migraine", "DRUG:fake-cgrp"])
+        self.assertEqual(graph["stats"]["nodeCount"], 2)
+
+    def test_primekg_graph_caps_answer_anchor_depth(self):
+        session = FakeGraphSession([
+            FakeSingleResult({"count": 1}),
+            FakeDataResult([{"id": "DISEASE:fake-migraine", "name": "Example Migraine", "type": "disease"}]),
+            FakeDataResult([]),
+        ])
+
+        with patch.object(primekg_api, "graph_store_status", return_value={"enabled": True, "connected": True}), \
+             patch.object(primekg_api, "get_driver", return_value=FakeGraphDriver(session)):
+            graph = primekg_api.primekg_graph({
+                "anchorNodeIds": ["DISEASE:fake-migraine"],
+                "depth": 3,
+                "maxNodes": 300,
+                "maxRelationships": 600,
+            })
+
+        self.assertEqual(graph["depth"], 2)
+        self.assertEqual(graph["mode"], "answer")
+
+    def test_primekg_graph_invalid_answer_anchors_return_empty(self):
+        session = FakeGraphSession([
+            FakeSingleResult({"count": 1}),
+            FakeDataResult([]),
+        ])
+
+        with patch.object(primekg_api, "graph_store_status", return_value={"enabled": True, "connected": True}), \
+             patch.object(primekg_api, "get_driver", return_value=FakeGraphDriver(session)):
+            graph = primekg_api.primekg_graph({"anchorNodeIds": ["missing-node"]})
+
+        self.assertEqual(graph["status"], "empty")
+        self.assertIn("answer graph anchors", graph["message"])
+
+    def test_primekg_graph_unavailable_for_answer_graph(self):
+        graph = primekg_api.primekg_graph({"anchorNodeIds": ["DISEASE:fake-migraine"]})
+
+        self.assertIn(graph["status"], {"disabled", "unavailable", "error"})
+
+    def test_primekg_graph_disease_mode_still_works_with_existing_shape(self):
+        graph = primekg_api.visual_graph_from_rows(
+            rows=[],
+            disease="Example Migraine",
+            depth=1,
+            max_nodes=10,
+            max_relationships=10,
+            seeds=[],
+        )
+
+        self.assertIn("nodes", graph)
+        self.assertIn("relationships", graph)
+
     def test_search_diseases_returns_case_insensitive_suggestions_from_csv(self):
         result = primekg_api.search_diseases(query="mig", limit=20, csv_path=self.sample_csv)
 
@@ -153,6 +244,51 @@ class PrimeKGApiTests(unittest.TestCase):
         self.assertEqual(result["count"], 0)
         self.assertEqual(result["diseases"], [])
         self.assertIn("kg.csv not found", result["message"])
+
+class FakeSingleResult:
+    def __init__(self, row):
+        self.row = row
+
+    def single(self):
+        return self.row
+
+
+class FakeDataResult:
+    def __init__(self, rows):
+        self.rows = rows
+
+    def data(self):
+        return self.rows
+
+
+class FakeGraphSession:
+    def __init__(self, results):
+        self.results = list(results)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        return False
+
+    def run(self, *args, **kwargs):
+        if not self.results:
+            return FakeDataResult([])
+        return self.results.pop(0)
+
+
+class FakeGraphDriver:
+    def __init__(self, session):
+        self.session_obj = session
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        return False
+
+    def session(self, database=None):
+        return self.session_obj
 
 
 if __name__ == "__main__":
