@@ -299,6 +299,7 @@ class AppHandler(BaseHTTPRequestHandler):
 
                 return self._send_json(_run_in_new_loop(_list, timeout=10))
         except Exception as exc:
+            logger.exception(f"Request failed: {self.path}")
             self._send_json({"error": str(exc)}, status=400)
 
     def _read_json(self):

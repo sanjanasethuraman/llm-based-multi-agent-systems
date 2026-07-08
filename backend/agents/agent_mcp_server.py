@@ -70,6 +70,7 @@ async def _run_agent(node_id, agent_config, edges, nodes, user_input):
         mcp_registry=registry,
         available_tools=available,
     )
+    logger.info(f"Sub-agent '{agent_config.get('name')}' returning result")
     return result
 
 
@@ -84,7 +85,11 @@ def create_sub_agent_server(node_id, agent_config, edges, nodes):
         _registry = None
         logger.info(f"Sub-agent '{agent_config.get('name')}' shut down.")
 
-    mcp = FastMCP(f"agent-{agent_config['name']}", lifespan=lifespan)
+    mcp = FastMCP(
+        f"agent-{agent_config['name']}",
+        lifespan=lifespan,
+        json_response=True,
+    )
 
     @mcp.tool(
         name=f"run_{agent_config.get('name', 'agent')}",
