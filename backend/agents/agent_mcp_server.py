@@ -64,7 +64,7 @@ async def _run_agent(node_id, agent_config, edges, nodes, user_input):
     available = get_available_tools(node_id, edges, nodes)
 
     provider = get_agent_provider(agent_config.get("provider", "mock"))
-    result, _, _ = await provider.run(
+    result, _, _, _, _ = await provider.run(
         config=agent_config,
         incoming=user_input,
         mcp_registry=registry,
