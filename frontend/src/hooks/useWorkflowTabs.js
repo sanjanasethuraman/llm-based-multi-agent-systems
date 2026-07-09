@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 
 /**
  * Hook for managing multiple workflow tabs
@@ -16,7 +16,7 @@ export function useWorkflowTabs(defaultWorkflow) {
   ]);
   const [activeTabId, setActiveTabId] = useState('workflow-1');
 
-  const activeTab = tabs.find((tab) => tab.id === activeTabId);
+  const activeTab = useMemo(() => tabs.find((tab) => tab.id === activeTabId), [activeTabId, tabs]);
 
   const createTab = useCallback((name = null) => {
     const newId = `workflow-${Date.now()}`;
@@ -86,7 +86,6 @@ export function useWorkflowTabs(defaultWorkflow) {
 
   const closeTab = useCallback((tabId) => {
     if (tabs.length === 1) {
-      console.warn('Cannot close the last tab');
       return false;
     }
     setTabs((current) => current.filter((tab) => tab.id !== tabId));

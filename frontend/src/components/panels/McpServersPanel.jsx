@@ -62,7 +62,7 @@ function McpServersPanel({ servers, onConnect, onDisconnect, onRefresh }) {
               <span className={`status-badge ${server.connected ? "completed" : "error"}`}>
                 {server.connected ? "Connected" : "Offline"}
               </span>
-              <span style={{ opacity: 0.6, fontSize: 12 }}>{server.transport} · {server.id}</span>
+              <span style={{ opacity: 0.6, fontSize: 12 }}>{server.transport} | {server.id}</span>
             </div>
             {server.id !== "internal" && (
               <button type="button" onClick={() => onDisconnect(server.id)}>

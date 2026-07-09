@@ -1,25 +1,14 @@
 import {
   addEdge,
-  Background,
-  Controls,
   Handle,
   MarkerType,
-  MiniMap,
   Position,
-  ReactFlow,
   ReactFlowProvider,
 } from "@xyflow/react";
 import {
   CheckCircle2,
   CircleDot,
-  Download,
-  FileInput,
-  FolderOpen,
-  Play,
-  Plus,
   RefreshCcw,
-  Save,
-  Trash2,
   Upload,
   XCircle,
 } from "lucide-react";
@@ -37,12 +26,21 @@ import {
 } from "./workflow.js";
 
 import McpServersPanel from "./components/panels/McpServersPanel.jsx"
+import AppShell from "./components/AppShell.jsx"
 import LogsPanel from "./components/panels/LogsPanel.jsx"
 import StatusBadge from "./components/StatusBadge.jsx";
+import AppShell from "./components/AppShell.jsx"
 import WorkflowTabs from "./components/WorkflowTabs.jsx"
 import ExecutionModeControl from "./components/ExecutionModeControl.jsx"
 import ComparisonReport from "./components/ComparisonReport.jsx"
+import DemoStatusBar from "./components/DemoStatusBar.jsx"
+import GuidedDemoPanel from "./components/GuidedDemoPanel.jsx"
+import GraphEvidencePanel from "./components/GraphEvidencePanel.jsx"
+import HeroHeader from "./components/HeroHeader.jsx"
 import IconButton from "./components/IconButton.jsx"
+import PrimeKGPanel from "./components/PrimeKGPanel.jsx"
+import WorkflowWorkspace from "./components/WorkflowWorkspace.jsx"
+import { useThemeMode } from "./hooks/useThemeMode.js";
 import { useWorkflowTabs } from "./hooks/useWorkflowTabs.js";
 
 const nodeTypes = { workflow: WorkflowNode };
@@ -84,6 +82,7 @@ export default function App() {
 }
 
 function WorkflowApp() {
+  const { theme, toggleTheme } = useThemeMode();
   // Multi-tab workflow management
   const {
     tabs,
@@ -105,6 +104,7 @@ function WorkflowApp() {
 
   const [selected, setSelected] = useState({ kind: "node", id: "agent-1" });
   const [statusMessage, setStatusMessage] = useState("Ready");
+  const [presentationMode, setPresentationMode] = useState(false);
   const [output, setOutput] = useState("Run the workflow to see the final output.");
   const [logs, setLogs] = useState([]);
   const [stats, setStats] = useState(null);
@@ -120,6 +120,18 @@ function WorkflowApp() {
   const [ollamaStatus, setOllamaStatus] = useState(null);
   const [huggingFaceStatus, setHuggingFaceStatus] = useState(null);
   const [graphStatus, setGraphStatus] = useState(null);
+  const [primekgStatus, setPrimekgStatus] = useState(null);
+  const [primekgPreview, setPrimekgPreview] = useState(null);
+  const [primekgImportSummary, setPrimekgImportSummary] = useState(null);
+  const [primekgGraph, setPrimekgGraph] = useState(null);
+  const [primekgLoading, setPrimekgLoading] = useState("");
+  const [primekgError, setPrimekgError] = useState("");
+  const [primekgForm, setPrimekgForm] = useState({
+    disease: "migraine",
+    depth: 2,
+    maxNodes: 1000,
+    maxRelationships: 3000,
+  });
   const [ingestStatus, setIngestStatus] = useState("No document ingested yet.");
   const [comparisonReports, setComparisonReports] = useState([]);
   const [isRunningBatch, setIsRunningBatch] = useState(false);
@@ -188,17 +200,29 @@ function WorkflowApp() {
         const targetStatus = nodeResults[edge.target]?.status;
         const retrievalInfo = retrievalByNode[edge.source];
         const matchingChunks = retrievalInfo?.matches?.length || 0;
+        const edgeStatusClass = selected.kind === "edge" && selected.id === id ? "selected" : "";
+        const edgeRuntimeClass =
+          sourceStatus === "running" || targetStatus === "running"
+            ? "running"
+            : ["completed", "success"].includes(sourceStatus) && ["completed", "success"].includes(targetStatus)
+              ? "completed"
+              : sourceStatus === "skipped" || targetStatus === "skipped"
+                ? "skipped"
+              : sourceStatus === "error" || targetStatus === "error"
+                ? "error"
+                : "";
         return {
           id,
           source: edge.source,
           target: edge.target,
           selected: selected.kind === "edge" && selected.id === id,
-          animated: sourceStatus === "completed" && targetStatus === "completed",
+          animated: edgeRuntimeClass === "running" || edgeRuntimeClass === "completed",
           markerEnd: { type: MarkerType.ArrowClosed },
-          className: `flow-edge ${sourceStatus || ""} ${targetStatus || ""}`,
+          className: `flow-edge ${edgeRuntimeClass} ${edgeStatusClass}`,
           label: matchingChunks > 0 ? `${matchingChunks} chunk${matchingChunks === 1 ? "" : "s"}` : undefined,
           labelBgPadding: [8, 6],
-          labelBgStyle: matchingChunks > 0 ? { fill: "rgba(255,255,255,0.94)", color: "#1f2937", fillOpacity: 0.9, stroke: "#cbd5e1" } : undefined,
+          labelBgStyle: matchingChunks > 0 ? { fill: "rgba(8,15,28,0.92)", fillOpacity: 0.92, stroke: "rgba(110,231,255,0.28)" } : undefined,
+          labelStyle: matchingChunks > 0 ? { fill: "#dbe7f6", fontWeight: 700 } : undefined,
         };
       }),
     [nodeResults, selected, workflow.edges, retrievalByNode],
@@ -209,6 +233,7 @@ function WorkflowApp() {
     refreshCollections();
     refreshMcpTools();
     refreshGraphStatus();
+    refreshPrimekgStatus();
     loadVectorDatabaseProviders();
   }, []);
 
@@ -420,9 +445,7 @@ function WorkflowApp() {
         }));
         setDynamicVectorBackendOptions(options);
       }
-    } catch (error) {
-      console.warn("Failed to load vector database providers:", error);
-      // Fallback to default options
+    } catch {
       setDynamicVectorBackendOptions(vectorBackendOptions);
     }
   }
@@ -567,7 +590,11 @@ function WorkflowApp() {
       setStatusMessage("Seeding biomedical Neo4j graph...");
       const result = await postJson("/api/graph-rag/seed-demo", {});
       setIngestStatus(JSON.stringify(result, null, 2));
-      setStatusMessage(`Seeded ${result.entities} entities and ${result.relationships} relationships into ${result.collection}.`);
+      if (result.status === "seeded") {
+        setStatusMessage(`Seeded ${result.entities} entities and ${result.relationships} relationships into ${result.collection}.`);
+      } else {
+        setStatusMessage(result.message || `Biomedical KG seed status: ${result.status}`);
+      }
       await refreshGraphStatus();
       await refreshCollections();
     } catch (error) {
@@ -576,18 +603,186 @@ function WorkflowApp() {
     }
   }
 
+  async function refreshPrimekgStatus() {
+    try {
+      setPrimekgError("");
+      setPrimekgLoading("status");
+      const result = await getJson("/api/primekg/status");
+      setPrimekgStatus(result);
+      if (result.lastImportSummary) {
+        setPrimekgImportSummary(result.lastImportSummary);
+      }
+    } catch (error) {
+      setPrimekgError(error.message);
+      setPrimekgStatus({ configured: false, fileExists: false, neo4jConnected: false, message: error.message });
+    } finally {
+      setPrimekgLoading("");
+    }
+  }
+
+  async function previewPrimekgSubgraph() {
+    try {
+      setPrimekgError("");
+      setPrimekgLoading("preview");
+      const result = await postJson("/api/primekg/filter-preview", {
+        csvPath: "data/primekg/kg.csv",
+        disease: primekgForm.disease,
+        depth: Number(primekgForm.depth),
+        maxNodes: Number(primekgForm.maxNodes),
+        maxRelationships: Number(primekgForm.maxRelationships),
+        allowedNodeTypes: [],
+        allowedRelationTypes: [],
+      });
+      setPrimekgPreview(result);
+      setStatusMessage(result.ok ? `PrimeKG preview found ${result.nodeCount} nodes and ${result.relationshipCount} relationships.` : result.error || "PrimeKG preview completed.");
+      await refreshPrimekgStatus();
+    } catch (error) {
+      setPrimekgError(error.message);
+      setStatusMessage(error.message);
+    } finally {
+      setPrimekgLoading("");
+    }
+  }
+
+  async function importPrimekgSubgraph() {
+    if (!primekgPreview?.outputPath) {
+      setPrimekgError("Preview a PrimeKG subgraph before importing.");
+      return;
+    }
+    try {
+      setPrimekgError("");
+      setPrimekgLoading("import");
+      const result = await postJson("/api/primekg/import-filtered", {
+        filteredPath: primekgPreview.outputPath,
+        dryRun: false,
+        clearExistingPrimeKG: false,
+      });
+      setPrimekgImportSummary(result);
+      setPrimekgGraph(null);
+      setStatusMessage(
+        result.status === "imported"
+          ? `Imported ${result.nodesImported} PrimeKG nodes and ${result.relationshipsImported} relationships.`
+          : `PrimeKG import status: ${result.status}`,
+      );
+      await refreshPrimekgStatus();
+      await refreshGraphStatus();
+    } catch (error) {
+      setPrimekgError(error.message);
+      setStatusMessage(error.message);
+    } finally {
+      setPrimekgLoading("");
+    }
+  }
+
+  async function filterAndImportPrimekgSubgraph() {
+    try {
+      setPrimekgError("");
+      setPrimekgLoading("filterImport");
+      const result = await postJson("/api/primekg/filter-and-import", {
+        csvPath: "data/primekg/kg.csv",
+        disease: primekgForm.disease,
+        depth: Number(primekgForm.depth),
+        maxNodes: Number(primekgForm.maxNodes),
+        maxRelationships: Number(primekgForm.maxRelationships),
+        allowedNodeTypes: [],
+        allowedRelationTypes: [],
+        dryRun: false,
+        clearExistingPrimeKG: false,
+      });
+      if (result.preview) {
+        setPrimekgPreview(result.preview);
+      }
+      if (result.importSummary) {
+        setPrimekgImportSummary(result.importSummary);
+      }
+      setPrimekgGraph(null);
+      setStatusMessage(
+        result.status === "imported"
+          ? `Filtered and imported ${result.importSummary?.nodesImported || 0} PrimeKG nodes.`
+          : `PrimeKG filter/import status: ${result.status}`,
+      );
+      await refreshPrimekgStatus();
+      await refreshGraphStatus();
+    } catch (error) {
+      setPrimekgError(error.message);
+      setStatusMessage(error.message);
+    } finally {
+      setPrimekgLoading("");
+    }
+  }
+
+  async function loadPrimekgGraph(options = {}) {
+    try {
+      setPrimekgError("");
+      setPrimekgLoading("graph");
+      const answerGraph = Boolean(options.answerGraph);
+      const result = await postJson("/api/primekg/graph", answerGraph ? {
+        anchorNodeIds: options.anchorNodeIds || [],
+        anchorNodeNames: options.anchorNodeNames || [],
+        depth: Math.min(Number(options.depth) || 2, 2),
+        maxNodes: Math.min(Number(options.maxNodes) || 300, 300),
+        maxRelationships: Math.min(Number(options.maxRelationships) || 600, 600),
+        question: options.question || "",
+      } : {
+        disease: primekgForm.disease,
+        depth: Number(primekgForm.depth),
+        maxNodes: Math.min(Number(primekgForm.maxNodes) || 120, 300),
+        maxRelationships: Math.min(Number(primekgForm.maxRelationships) || 250, 600),
+      });
+      setPrimekgGraph(result);
+      setStatusMessage(
+        result.status === "available"
+          ? `Loaded ${answerGraph ? "answer" : "in-app PrimeKG"} graph with ${result.stats?.nodeCount || 0} nodes and ${result.stats?.relationshipCount || 0} relationships.`
+          : result.message || "PrimeKG graph view loaded.",
+      );
+      if (answerGraph && options.highlightPath) {
+        window.setTimeout(() => {
+          window.dispatchEvent(new CustomEvent("primekg:highlight-path", { detail: { path: options.highlightPath } }));
+          document.querySelector(".primekg-explorer")?.scrollIntoView({ behavior: "smooth", block: "start" });
+        }, 250);
+      }
+    } catch (error) {
+      setPrimekgError(error.message);
+      setStatusMessage(error.message);
+    } finally {
+      setPrimekgLoading("");
+    }
+  }
+
+  async function loadAnswerGraphFromEvidence({ path, item }) {
+    const anchorNodeIds = uniqueValues([
+      ...(path?.nodes || []).map((node) => node.id || node.prime_id),
+      ...(item?.detectedEntities || []).map((entity) => entity.id),
+    ]).slice(0, 20);
+    const anchorNodeNames = uniqueValues([
+      ...(path?.nodes || []).map((node) => node.name),
+      ...(item?.detectedEntities || []).map((entity) => entity.name),
+    ]).slice(0, 20);
+    if (!anchorNodeIds.length && !anchorNodeNames.length) {
+      setStatusMessage("No answer graph anchors were available for this path.");
+      return;
+    }
+    await loadPrimekgGraph({
+      answerGraph: true,
+      anchorNodeIds,
+      anchorNodeNames,
+      question: item?.query || "",
+      highlightPath: path,
+      depth: 2,
+      maxNodes: 300,
+      maxRelationships: 600,
+    });
+  }
+
   async function refreshMcpTools() {
     try {
       const [toolsResult, serversResult] = await Promise.all([
         getJson("/api/mcp/tools"),
         getJson("/api/mcp/servers"),
       ]);
-      console.log("tools response:", toolsResult);
-      console.log("servers response:", serversResult);
       setMcpTools(toolsResult.tools || []);
       setMcpServers(serversResult.servers || []);
     } catch (error) {
-      console.error("refreshMcpTools error:", error);
       setStatusMessage(error.message);
     }
   }
@@ -748,8 +943,106 @@ function WorkflowApp() {
     }
   }
 
+  async function checkSystemStatus() {
+    setStatusMessage("Checking system status...");
+    await Promise.allSettled([
+      refreshExamples(),
+      refreshCollections(),
+      refreshGraphStatus(),
+      refreshPrimekgStatus(),
+      refreshMcpTools(),
+      loadVectorDatabaseProviders(),
+    ]);
+    setStatusMessage("System status refreshed.");
+  }
+
+  function loadDemoWorkflow() {
+    const demoName = selectedExample || examples[0]?.name;
+    if (!demoName) {
+      setStatusMessage("No demo workflows are available yet.");
+      return;
+    }
+    loadExample(demoName);
+  }
+
+  function openEvidencePanel() {
+    document.querySelector(".retrieval-panel")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    setStatusMessage("Evidence panel opened. Run a RAG, graph, or hybrid workflow to populate retrieved context.");
+  }
+
+  async function openKnowledgeGraph() {
+    document.querySelector(".primekg-panel")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    if (primekgGraph?.status === "available") {
+      setStatusMessage("PrimeKG graph viewer is already loaded.");
+      return;
+    }
+    if (primekgStatus?.neo4jConnected || primekgStatus?.neo4j?.connected) {
+      await loadPrimekgGraph();
+      return;
+    }
+    setStatusMessage("PrimeKG panel opened. Start Neo4j and import a subgraph before loading the graph.");
+  }
+
+  const backendKnown = Boolean(
+    examples.length ||
+      collections.length ||
+      graphStatus?.driverInstalled !== undefined ||
+      graphStatus?.connected !== undefined ||
+      primekgStatus?.configured !== undefined,
+  );
+  const primekgGraphLoaded = Boolean(
+    primekgGraph?.status === "available" && (primekgGraph?.nodes?.length || primekgGraph?.stats?.nodeCount),
+  );
+  const workflowLoaded = Boolean(workflow.nodes?.length);
+  const demoChecklist = [
+    { label: "Backend running", ready: backendKnown },
+    { label: "Workflow loaded", ready: workflowLoaded },
+    { label: "Vector data available", ready: collections.length > 0 },
+    { label: "Neo4j connected", ready: Boolean(primekgStatus?.neo4jConnected || primekgStatus?.neo4j?.connected), warning: primekgStatus && !(primekgStatus?.neo4jConnected || primekgStatus?.neo4j?.connected) },
+    { label: "PrimeKG graph loaded", ready: primekgGraphLoaded },
+    { label: "Ready to run", ready: workflowLoaded && validation.errors.length === 0, warning: validation.errors.length > 0 },
+  ];
+
   return (
-    <div className="app-shell">
+    <AppShell presentationMode={presentationMode} theme={theme}>
+      <HeroHeader
+        examples={examples}
+        theme={theme}
+        presentationMode={presentationMode}
+        selectedExample={selectedExample}
+        statusMessage={statusMessage}
+        onCheckStatus={checkSystemStatus}
+        onExportPython={exportPythonFile}
+        onGeneratePython={generatePython}
+        onLoadDemo={loadDemoWorkflow}
+        onLoadSaved={loadSavedWorkflow}
+        onOpenKnowledgeGraph={openKnowledgeGraph}
+        onTogglePresentationMode={() => setPresentationMode((value) => !value)}
+        onToggleTheme={toggleTheme}
+        onRunWorkflow={runWorkflow}
+        onSaveWorkflow={saveWorkflow}
+        onSelectExample={setSelectedExample}
+      />
+
+      <DemoStatusBar
+        backendKnown={backendKnown}
+        collections={collections}
+        graphLoaded={primekgGraphLoaded}
+        graphStatus={graphStatus}
+        mcpServers={mcpServers}
+        primekgStatus={primekgStatus}
+      />
+
+      <GuidedDemoPanel
+        checklist={demoChecklist}
+        examples={examples}
+        workflowLoaded={workflowLoaded}
+        onLoadExample={loadExample}
+        onOpenEvidence={openEvidencePanel}
+        onOpenGraph={openKnowledgeGraph}
+        onRunWorkflow={runWorkflow}
+      />
+
       <div className="workflow-tabs-section">
         <WorkflowTabs
           tabs={tabs}
@@ -761,32 +1054,6 @@ function WorkflowApp() {
           onRenameTab={renameTab}
         />
       </div>
-
-      <header className="topbar">
-        <div>
-          <h1>Visual MAS Tool</h1>
-          <p>Build, run, and inspect LLM-based multi-agent workflows.</p>
-        </div>
-        <div className="actions">
-          <select
-            aria-label="Example workflow"
-            value={selectedExample}
-            onChange={(event) => setSelectedExample(event.target.value)}
-          >
-            {examples.map((example) => (
-              <option key={example.name} value={example.name}>
-                {example.label}
-              </option>
-            ))}
-          </select>
-          <IconButton icon={FolderOpen} label="Load Example" onClick={() => loadExample()} />
-          <IconButton icon={Play} label="Run" variant="primary" onClick={runWorkflow} />
-          <IconButton icon={Save} label="Save" onClick={saveWorkflow} />
-          <IconButton icon={Download} label="Load Saved" onClick={loadSavedWorkflow} />
-          <IconButton icon={FileInput} label="Generate Python" onClick={generatePython} />
-          <IconButton icon={Download} label="Export .py" onClick={exportPythonFile} />
-        </div>
-      </header>
 
       <ExecutionModeControl
         mode={executionMode}
@@ -800,53 +1067,41 @@ function WorkflowApp() {
 
       <div className="status-message">{statusMessage}</div>
 
-      <main className="workspace">
-        <Palette onAddNode={addWorkflowNode} />
-
-        <section className="canvas-panel">
-          <div className="canvas-header">
-            <strong>Workflow Graph</strong>
-            <div className="canvas-tools">
-              <span>{selectionLabel(selectedNode, selectedEdge)}</span>
-              <button type="button" disabled={!selectedNode && !selectedEdge} onClick={deleteSelection}>
-                <Trash2 size={15} />
-                Delete
-              </button>
-            </div>
-          </div>
-          <div className="canvas">
-            <ReactFlow
-              fitView
-              deleteKeyCode={["Backspace", "Delete"]}
-              edges={flowEdges}
-              nodes={flowNodes}
-              nodeTypes={nodeTypes}
-              onConnect={handleConnect}
-              onEdgeClick={(_, edge) => setSelected({ kind: "edge", id: edge.id })}
-              onEdgesDelete={handleEdgesDelete}
-              onNodeClick={(_, node) => setSelected({ kind: "node", id: node.id })}
-              onNodeDragStop={handleNodeDragStop}
-              onNodesChange={handleNodesChange}
-              onNodesDelete={handleNodesDelete}
-              onPaneClick={() => setSelected({ kind: "none", id: "" })}
-            >
-              <Background gap={22} size={1} />
-              <MiniMap pannable zoomable nodeStrokeWidth={3} />
-              <Controls />
-            </ReactFlow>
-          </div>
-        </section>
-
-        <ConfigPanel
-          node={selectedNode}
-          validation={validation}
-          huggingFaceStatus={huggingFaceStatus}
-          mcpTools={mcpTools}
-          mcpServers={mcpServers}
-          ollamaStatus={ollamaStatus}
-          onNodeChange={updateNode}
-        />
-      </main>
+      <WorkflowWorkspace
+        edges={flowEdges}
+        nodes={flowNodes}
+        nodeTypes={nodeTypes}
+        nodeTypesCatalog={NODE_TYPES}
+        selectedNode={selectedNode}
+        selectedEdge={selectedEdge}
+        selectedLabel={selectionLabel(selectedNode, selectedEdge)}
+        validation={validation}
+        onAddNode={addWorkflowNode}
+        onDeleteSelection={deleteSelection}
+        presentationMode={presentationMode}
+        onRunWorkflow={runWorkflow}
+        canvasCallbacks={{
+          onConnect: handleConnect,
+          onEdgeClick: (_, edge) => setSelected({ kind: "edge", id: edge.id }),
+          onEdgesDelete: handleEdgesDelete,
+          onNodeClick: (_, node) => setSelected({ kind: "node", id: node.id }),
+          onNodeDragStop: handleNodeDragStop,
+          onNodesChange: handleNodesChange,
+          onNodesDelete: handleNodesDelete,
+          onPaneClick: () => setSelected({ kind: "none", id: "" }),
+        }}
+        inspector={
+          <ConfigPanel
+            node={selectedNode}
+            validation={validation}
+            huggingFaceStatus={huggingFaceStatus}
+            mcpTools={mcpTools}
+            mcpServers={mcpServers}
+            ollamaStatus={ollamaStatus}
+            onNodeChange={updateNode}
+          />
+        }
+      />
 
       <RagPanel
         collections={collections}
@@ -863,34 +1118,77 @@ function WorkflowApp() {
         dynamicVectorBackendOptions={dynamicVectorBackendOptions}
       />
 
-      <McpServersPanel
-        servers={mcpServers}
-        onConnect={connectMcpServer}
-        onDisconnect={disconnectMcpServer}
-        onRefresh={refreshMcpTools}
+      <PrimeKGPanel
+        form={primekgForm}
+        status={primekgStatus}
+        preview={primekgPreview}
+        importSummary={primekgImportSummary}
+        graph={primekgGraph}
+        retrievals={retrievals}
+        loading={primekgLoading}
+        error={primekgError}
+        onFormChange={setPrimekgForm}
+        onRefreshStatus={refreshPrimekgStatus}
+        onPreview={previewPrimekgSubgraph}
+        onImport={importPrimekgSubgraph}
+        onFilterAndImport={filterAndImportPrimekgSubgraph}
+        onLoadGraph={loadPrimekgGraph}
+        presentationMode={presentationMode}
       />
 
-      <ResultPanels output={output} logs={logs} stats={stats} nodeResults={nodeResults} retrievals={retrievals} workflow={workflow} />
-      <RetrievalPanel retrievals={retrievals} />
-
-      {comparisonReports.length > 0 && (
-        <section className="comparison-panel">
-          <div className="comparison-header">
-            <h2>Workflow Comparison Report</h2>
-            <p>{comparisonReports.length} workflows executed</p>
-          </div>
-          <ComparisonReport reports={comparisonReports} />
-        </section>
-      )}
-
-      <section className="code-panel">
-        <div className="code-header">
-          <h2>Generated Python</h2>
-          <span>Executable export for the current workflow</span>
+      <section className="post-kg-console" aria-label="Workflow evidence and output console">
+        <div className="post-kg-console__heading">
+          <span>Execution console</span>
+          <h2>Outputs, Evidence, and Tool Activity</h2>
+          <p>Review workflow results, retrieved context, MCP calls, and generated code after exploring the knowledge graph.</p>
         </div>
-        <pre id="generated-code">{generatedCode}</pre>
+
+        <McpServersPanel
+          servers={mcpServers}
+          onConnect={connectMcpServer}
+          onDisconnect={disconnectMcpServer}
+          onRefresh={refreshMcpTools}
+        />
+
+        <ResultPanels
+          output={output}
+          logs={logs}
+          stats={stats}
+          nodeResults={nodeResults}
+          retrievals={retrievals}
+          selectedDisease={primekgForm.disease}
+          visualGraph={primekgGraph}
+          onLoadAnswerGraph={loadAnswerGraphFromEvidence}
+          onOpenGraph={openKnowledgeGraph}
+        />
+        <RetrievalPanel
+          retrievals={retrievals}
+          selectedDisease={primekgForm.disease}
+          visualGraph={primekgGraph}
+          onLoadAnswerGraph={loadAnswerGraphFromEvidence}
+          onOpenGraph={openKnowledgeGraph}
+        />
+        <McpCallsPanel calls={mcpCalls} />
+
+        {comparisonReports.length > 0 && (
+          <section className="comparison-panel">
+            <div className="comparison-header">
+              <h2>Workflow Comparison Report</h2>
+              <p>{comparisonReports.length} workflows executed</p>
+            </div>
+            <ComparisonReport reports={comparisonReports} />
+          </section>
+        )}
+
+        <section className="code-panel">
+          <div className="code-header">
+            <h2>Generated Python</h2>
+            <span>Executable export for the current workflow</span>
+          </div>
+          <pre id="generated-code">{generatedCode}</pre>
+        </section>
       </section>
-    </div>
+    </AppShell>
   );
 }
 
@@ -899,20 +1197,36 @@ function WorkflowNode({ data, selected }) {
   const status = result?.status || "idle";
   const chunkCount = retrievalInfo?.matches?.length || 0;
   const details = retrievalInfo && chunkCount > 0;
+  const typeLabel = NODE_TYPES[node.type] || node.type;
+  const primaryDetail = getNodePrimaryDetail(node);
+  const compactStats = getNodeCompactStats(node, result, retrievalInfo);
+  const glyph = getNodeGlyph(node.type);
 
   return (
     <div className={`workflow-node ${node.type} ${status} ${selected ? "selected" : ""}`}>
       <Handle className="node-handle target" type="target" position={Position.Left} />
-      <div className="node-title">
-        <strong>{node.label || node.id}</strong>
-        <StatusBadge status={status} />
+      <div className="node-shell">
+        <div className="node-icon" aria-hidden="true">{glyph}</div>
+        <div className="node-title">
+          <div>
+            <span className="node-type-badge">{typeLabel}</span>
+            <strong>{node.label || node.id}</strong>
+          </div>
+          <StatusBadge status={status} />
+        </div>
       </div>
       <div className="node-meta">
-        <span>{NODE_TYPES[node.type] || node.type}</span>
-        {node.type === "agent" && <span>{node.config?.provider || "mock"}</span>}
-        {node.type === "tool" && <span>{node.config?.toolName || "unselected"}</span>}
-        {node.type === "sub_agent" && <span>{node.config?.name || "unknown"}</span>}
+        {primaryDetail.map((detail) => (
+          <span key={detail}>{detail}</span>
+        ))}
       </div>
+      {compactStats.length ? (
+        <div className="node-compact-stats">
+          {compactStats.map((stat) => (
+            <span key={stat}>{stat}</span>
+          ))}
+        </div>
+      ) : null}
       {details && (
         <div className="node-retrieval-summary">
           <span>{chunkCount} retrieved chunk{chunkCount === 1 ? "" : "s"}</span>
@@ -926,27 +1240,20 @@ function WorkflowNode({ data, selected }) {
   );
 }
 
-function Palette({ onAddNode }) {
-  return (
-    <aside className="palette">
-      <h2>Components</h2>
-      {Object.entries(NODE_TYPES).map(([type, label]) => (
-        <button key={type} type="button" onClick={() => onAddNode(type)}>
-          <Plus size={15} />
-          {label}
-        </button>
-      ))}
-      <p className="hint">Drag nodes on the canvas. Connect side ports to build the execution graph.</p>
-    </aside>
-  );
-}
-
 function ConfigPanel({ node, validation, huggingFaceStatus, mcpTools, mcpServers, ollamaStatus, onNodeChange }) {
   if (!node) {
     return (
       <aside className="config">
-        <h2>Configuration</h2>
-        <p className="empty-state">Select a node or edge to edit it.</p>
+        <div className="inspector-header">
+          <div className="inspector-icon muted">ND</div>
+          <div>
+            <span>Node Inspector</span>
+            <h2>Configuration</h2>
+            <p>Select a node or edge to edit settings and inspect validation.</p>
+          </div>
+        </div>
+        <p className="empty-state">Nothing selected yet.</p>
+        <p className="context-helper">Select a node on the canvas to edit provider, retrieval, tool, and graph settings.</p>
         <ValidationPanel validation={validation} />
       </aside>
     );
@@ -954,25 +1261,49 @@ function ConfigPanel({ node, validation, huggingFaceStatus, mcpTools, mcpServers
 
   const updateConfig = (patch) => onNodeChange(node.id, { config: patch });
   const updateLabel = (label) => onNodeChange(node.id, { label });
+  const typeLabel = NODE_TYPES[node.type] || node.type;
 
   return (
     <aside className="config">
-      <h2>Configuration</h2>
+      <div className="inspector-header">
+        <div className={`inspector-icon ${node.type}`}>{getNodeGlyph(node.type)}</div>
+        <div>
+          <span>Node Inspector</span>
+          <h2>{node.label || node.id}</h2>
+          <p>
+            <strong>{typeLabel}</strong>
+            <span>{node.id}</span>
+          </p>
+        </div>
+      </div>
+      <p className="context-helper">Node settings update the active workflow immediately; run the workflow to see per-node status and outputs.</p>
       <div className="form-grid">
-        <label>
-          Label
-          <input value={node.label || ""} onChange={(event) => updateLabel(event.target.value)} />
-        </label>
+        <section className="settings-group">
+          <div className="settings-group__title">
+            <span>Basics</span>
+            <strong>Identity</strong>
+          </div>
+          <label>
+            Label
+            <input value={node.label || ""} onChange={(event) => updateLabel(event.target.value)} />
+          </label>
+        </section>
 
         {node.type === "input" && (
-          <label>
-            Input Text
-            <textarea
-              rows={6}
-              value={node.config.text || ""}
-              onChange={(event) => updateConfig({ text: event.target.value })}
-            />
-          </label>
+          <section className="settings-group">
+            <div className="settings-group__title">
+              <span>Source</span>
+              <strong>Input Payload</strong>
+            </div>
+            <label>
+              Input Text
+              <textarea
+                rows={6}
+                value={node.config.text || ""}
+                onChange={(event) => updateConfig({ text: event.target.value })}
+              />
+            </label>
+          </section>
         )}
 
         {node.type === "agent" && (
@@ -1105,6 +1436,9 @@ function ConfigPanel({ node, validation, huggingFaceStatus, mcpTools, mcpServers
                 </label>
                 {["graph", "hybrid"].includes(node.config.retrievalMode || "vector") && (
                   <>
+                    <div className="provider-note neutral compact">
+                      Disease selection is optional. Graph RAG will auto-detect entities from the question when possible; a selected disease is only used as a hint.
+                    </div>
                     <label>
                       Graph Hops
                       <input
@@ -1328,6 +1662,10 @@ function ConfigPanel({ node, validation, huggingFaceStatus, mcpTools, mcpServers
       </div>
 
       <ValidationPanel validation={validation} />
+      <details className="raw-details">
+        <summary>Raw node configuration</summary>
+        <pre>{JSON.stringify(node, null, 2)}</pre>
+      </details>
     </aside>
   );
 }
@@ -1419,6 +1757,19 @@ function RagPanel({
   dynamicVectorBackendOptions,
 }) {
   const updateField = (field, value) => onFormChange((current) => ({ ...current, [field]: value }));
+  const graphState = graphStatus
+    ? graphStatus.enabled === false
+      ? "disabled"
+      : graphStatus.connected
+        ? "connected"
+        : "offline"
+    : "checking";
+  const graphNoteClass = graphState === "connected" ? "success" : graphState === "disabled" ? "neutral" : "warning";
+  const graphMessage = graphStatus
+    ? graphState === "connected"
+      ? `connected to ${graphStatus.uri || "Neo4j"}`
+      : `${graphState} at ${graphStatus.uri || "bolt://127.0.0.1:7687"}. ${graphStatus.message || graphStatus.error || ""}`
+    : "Checking graph backend...";
   return (
     <section className="rag-panel">
       <div className="section-header">
@@ -1429,7 +1780,7 @@ function RagPanel({
         <IconButton icon={RefreshCcw} label="Refresh" onClick={onRefreshCollections} />
       </div>
 
-      <div className="ingest-grid">
+      <div className="ingest-grid settings-grid">
         <label>
           Collection
           <input value={form.collection} onChange={(event) => updateField("collection", event.target.value)} />
@@ -1454,6 +1805,7 @@ function RagPanel({
             <option value="true">Neo4j graph + vector</option>
             <option value="false">Vector only</option>
           </select>
+          <small>When Neo4j is connected, graph indexing stores entity relationships for graph/hybrid retrieval.</small>
         </label>
         <label>
           Embedding Model
@@ -1472,14 +1824,21 @@ function RagPanel({
         <ProviderNote provider="ollama" ollamaStatus={ollamaStatus} />
       </div>
 
-      <div className={`provider-note ${graphStatus?.connected ? "success" : "warning"}`}>
+      <p className="context-helper">Retrieval modes: vector searches embedded chunks, graph follows Neo4j relationships, hybrid combines both for richer evidence.</p>
+
+      <div className={`provider-note ${graphNoteClass}`}>
         <strong>Neo4j Graph RAG:</strong>{" "}
-        {graphStatus
-          ? `${graphStatus.connected ? "connected" : "not connected"} at ${graphStatus.uri || "bolt://127.0.0.1:7687"}. ${graphStatus.message || ""}`
-          : "Checking graph backend..."}
+        {graphMessage}
+        {graphStatus?.setupHint ? <div>{graphStatus.setupHint}</div> : null}
         <div className="inline-actions">
           <IconButton icon={RefreshCcw} label="Graph Status" onClick={onRefreshGraphStatus} />
-          <IconButton icon={Upload} label="Seed Biomedical KG" variant="primary" onClick={onSeedBiomedicalGraph} />
+          <IconButton
+            disabled={graphState !== "connected"}
+            icon={Upload}
+            label={graphState === "connected" ? "Seed Biomedical KG" : "Seed Unavailable"}
+            variant="primary"
+            onClick={onSeedBiomedicalGraph}
+          />
         </div>
       </div>
 
@@ -1506,7 +1865,10 @@ function RagPanel({
       <div className="inline-actions">
         <IconButton icon={Upload} label="Ingest" variant="primary" onClick={onIngest} />
       </div>
-      <pre>{ingestStatus}</pre>
+      <details className="raw-details ingest-status-details" open>
+        <summary>Ingestion status</summary>
+        <pre>{ingestStatus}</pre>
+      </details>
 
       <div className="collections-list">
         <h3>Collections</h3>
@@ -1523,7 +1885,7 @@ function RagPanel({
             ))}
           </div>
         ) : (
-          <p>No collections yet.</p>
+          <p className="panel-empty-state"><strong>No vector collections yet</strong><span>Ingest a document or use manual fallback text to create retrievable context.</span></p>
         )}
 
         {recentDocuments.length > 0 && (
@@ -1541,7 +1903,66 @@ function RagPanel({
   );
 }
 
-function ResultPanels({ output, logs, stats, nodeResults, retrievals, workflow}) {
+function getNodeGlyph(type) {
+  const glyphs = {
+    agent: "AI",
+    input: "IN",
+    mcp_tool: "MC",
+    output: "OUT",
+    retriever: "RG",
+    sub_agent: "SA",
+    tool: "TL",
+    vector_db: "DB",
+  };
+  return glyphs[type] || "ND";
+}
+
+function getNodePrimaryDetail(node) {
+  const config = node.config || {};
+  if (node.type === "agent") {
+    return [config.provider || "mock", config.model || config.name || "model pending"].filter(Boolean);
+  }
+  if (node.type === "retriever") {
+    return [config.retrievalMode || "vector", config.collection || "collection"].filter(Boolean);
+  }
+  if (node.type === "vector_db") {
+    return [config.vectorBackend || "auto", config.collection || "collection"].filter(Boolean);
+  }
+  if (node.type === "tool" || node.type === "mcp_tool") {
+    return [config.toolName || config.name || "tool pending", config.serverId || "server pending"].filter(Boolean);
+  }
+  if (node.type === "sub_agent") {
+    return [config.name || "sub-agent", config.role || "delegate"].filter(Boolean);
+  }
+  if (node.type === "output") {
+    return [config.format || "final response"];
+  }
+  if (node.type === "input") {
+    return [config.title || "source input"];
+  }
+  return [node.type];
+}
+
+function getNodeCompactStats(node, result, retrievalInfo) {
+  const stats = [];
+  const matches = retrievalInfo?.matches?.length || 0;
+  const graphEntities = retrievalInfo?.graphEntities?.length || result?.graphEntities?.length || 0;
+  const graphRelationships = retrievalInfo?.graphRelationships?.length || result?.graphRelationships?.length || 0;
+  const mcpCalls = result?.mcpCalls?.length || result?.toolCalls?.length || 0;
+  const tokenCount = result?.usage?.total_tokens || result?.usage?.totalTokens || result?.tokens;
+
+  if (matches) stats.push(`${matches} chunks`);
+  if (graphEntities) stats.push(`${graphEntities} entities`);
+  if (graphRelationships) stats.push(`${graphRelationships} rels`);
+  if (mcpCalls) stats.push(`${mcpCalls} calls`);
+  if (tokenCount) stats.push(`${tokenCount} tokens`);
+  if (node.type === "retriever" && node.config?.topK) stats.push(`top ${node.config.topK}`);
+  return stats.slice(0, 4);
+}
+
+function ResultPanels({ output, logs, stats, nodeResults, retrievals, selectedDisease = "", visualGraph = null, onLoadAnswerGraph, onOpenGraph }) {
+  const [selectedLogFilter, setSelectedLogFilter] = useState("all");
+  const [searchTerm, setSearchTerm] = useState("");
   const [showFullOutput, setShowFullOutput] = useState(true);
   const [copyStatus, setCopyStatus] = useState("");
   const [resultsTab, setResultsTab] = useState("final");
@@ -1588,6 +2009,7 @@ function ResultPanels({ output, logs, stats, nodeResults, retrievals, workflow})
 
   const outputPreview = output;
   const canShowMore = output && output.length > 1200;
+  const graphEvidence = graphEvidenceItemsFromRetrievals(retrievals);
 
   return (
     <section className="bottom-panel">
@@ -1675,12 +2097,83 @@ function ResultPanels({ output, logs, stats, nodeResults, retrievals, workflow})
               ))}
             </div>
           ) : (
-            <div className="node-results-empty">No node-level results available yet.</div>
+            <div className="node-results-empty">No node-level results available yet. Run the workflow to inspect each node output.</div>
           )}
           {copyStatus && <div className="copy-feedback">{copyStatus}</div>}
         </div>
+        <GraphEvidencePanel
+          items={graphEvidence}
+          selectedDisease={selectedDisease}
+          visualGraph={visualGraph}
+          onLoadAnswerGraph={onLoadAnswerGraph}
+          onOpenGraph={onOpenGraph}
+        />
       </section>
-      <LogsPanel logs={logs} logCounts={logCounts} />
+
+      <details className="logs-panel utility-disclosure" open={logs.length > 0 && logs.length <= 5}>
+        <summary className="section-header disclosure-header">
+          <div>
+            <h2>Logs</h2>
+            <p>Filter and search execution logs for better insight.</p>
+          </div>
+          <span>{filteredLogs.length} shown</span>
+        </summary>
+        <div className="log-toolbar">
+          <div className="log-filters">
+            {[
+              { key: "all", label: `All (${logCounts.all})` },
+              { key: "completed", label: `Done (${logCounts.completed})` },
+              { key: "warning", label: `Warn (${logCounts.warning})` },
+              { key: "error", label: `Error (${logCounts.error})` },
+            ].map((filter) => (
+              <button
+                key={filter.key}
+                type="button"
+                className={`filter-button ${selectedLogFilter === filter.key ? "active" : ""}`}
+                onClick={() => setSelectedLogFilter(filter.key)}
+              >
+                {filter.label}
+              </button>
+            ))}
+          </div>
+          <input
+            className="log-search"
+            placeholder="Search logs"
+            value={searchTerm}
+            onChange={(event) => setSearchTerm(event.target.value)}
+          />
+        </div>
+        <div className="log-summary-grid">
+          <div className="log-stat-card">
+            <strong>{filteredLogs.length}</strong>
+            <span>Shown</span>
+          </div>
+          <div className="log-stat-card">
+            <strong>{logCounts.error}</strong>
+            <span>Total errors</span>
+          </div>
+          <div className="log-stat-card">
+            <strong>{logCounts.warning}</strong>
+            <span>Total warnings</span>
+          </div>
+        </div>
+        <div className="log-list">
+          {filteredLogs.length ? (
+            filteredLogs.map((item, index) => (
+              <article key={`${item.nodeId}-${index}`} className={`log-entry ${item.status || "completed"}`}>
+                <div className="log-entry-header">
+                  <StatusBadge status={item.status || "completed"} />
+                  <span className="log-entry-meta">{item.nodeId}</span>
+                </div>
+                <p>{item.message}</p>
+              </article>
+            ))
+          ) : (
+            <p className="log-empty">No logs match the current filter.</p>
+          )}
+        </div>
+      </details>
+
       <WorkflowStatsPanel stats={stats} retrievals={retrievals} />
       <NodeStatsPanel nodeResults={nodeResults} stats={stats} workflow={workflow} />
     </section>
@@ -1972,7 +2465,7 @@ function NodeStatsPanel({ nodeResults, stats, workflow }) {
   );
 }
 
-function RetrievalPanel({ retrievals }) {
+function RetrievalPanel({ retrievals, selectedDisease = "", visualGraph = null, onLoadAnswerGraph, onOpenGraph }) {
   const matches = retrievals.flatMap((retrieval) => {
     const hits = (retrieval.matches || []).map((match, index) => ({
       ...match,
@@ -2010,15 +2503,8 @@ function RetrievalPanel({ retrievals }) {
 
   const retrievedChunkCount = matches.filter((match) => !match.placeholder).length;
   const hasRetrieverRun = retrievals.length > 0;
-  const graphEvidence = retrievals
-    .map((retrieval) => ({
-      nodeId: retrieval.nodeId,
-      nodeName: retrieval.nodeName,
-      collection: retrieval.collection,
-      retrievalMode: retrieval.retrievalMode,
-      evidence: retrieval.graphEvidence,
-    }))
-    .filter((item) => item.evidence && (item.evidence.entities?.length || item.evidence.relationships?.length || item.evidence.message));
+  const graphEvidence = graphEvidenceItemsFromRetrievals(retrievals);
+  const selectedDiseaseHint = String(selectedDisease || "").trim();
 
   return (
     <section className="retrieval-panel">
@@ -2026,10 +2512,15 @@ function RetrievalPanel({ retrievals }) {
         <div>
           <h2>Retrieved Chunks</h2>
           <p>{hasRetrieverRun ? `${retrievedChunkCount} chunks returned by retriever nodes.` : "No retriever run yet."}</p>
+          <p className="retrieval-mode-helper">
+            Disease selection is optional. Graph RAG will auto-detect entities from your question when possible.
+            {" "}
+            {selectedDiseaseHint ? "Using selected disease as graph hint." : "Auto-detecting graph entities from question."}
+          </p>
         </div>
       </div>
       <div className="retrieved-chunks">
-        {matches.map((match) => (
+        {matches.length ? matches.map((match) => (
           <article key={`${match.nodeId}-${match.index}-${match.metadata?.chunkIndex}-${match.placeholder ? "none" : "match"}`}>
             <div>
               <strong>{match.metadata?.title || (match.placeholder ? "Retriever result" : "Untitled")}</strong>
@@ -2045,42 +2536,106 @@ function RetrievalPanel({ retrievals }) {
               <small>{match.placeholder ? (match.retrievalContext || "No matches were found.") : `source: ${match.metadata?.source || "unknown"}`}</small>
             </div>
           </article>
-        ))}
+        )) : (
+          <div className="panel-empty-state">
+            <strong>No retrieved context yet</strong>
+            <span>Run a workflow with vector, graph, or hybrid retrieval to populate evidence cards.</span>
+          </div>
+        )}
       </div>
       {graphEvidence.length > 0 && (
-        <div className="graph-evidence">
-          <h3>Graph Evidence</h3>
-          {graphEvidence.map((item) => (
-            <article key={`${item.nodeId}-${item.collection}-graph`}>
-              <div>
-                <strong>{item.nodeName || item.nodeId}</strong>
-                <span>{item.retrievalMode || "graph"}</span>
-                <span>{item.collection}</span>
-                <span>{item.evidence.status || "available"}</span>
-              </div>
-              {item.evidence.message && <p>{item.evidence.message}</p>}
-              {item.evidence.entities?.length ? (
-                <p>
-                  <strong>Entities:</strong>{" "}
-                  {item.evidence.entities.slice(0, 12).map((entity) => `${entity.type || "Entity"}:${entity.name}`).join(", ")}
-                </p>
-              ) : null}
-              {item.evidence.relationships?.length ? (
-                <ul>
-                  {item.evidence.relationships.slice(0, 10).map((relationship, index) => (
-                    <li key={`${relationship.source}-${relationship.target}-${relationship.type}-${index}`}>
-                      {relationship.sourceName} -[{relationship.type}]-&gt; {relationship.targetName}
-                    </li>
-                  ))}
-                </ul>
-              ) : null}
-            </article>
-          ))}
-        </div>
+        <GraphEvidencePanel
+          items={graphEvidence}
+          selectedDisease={selectedDisease}
+          visualGraph={visualGraph}
+          onLoadAnswerGraph={onLoadAnswerGraph}
+          onOpenGraph={onOpenGraph}
+          compact
+        />
       )}
     </section>
   );
 }
+
+function graphEvidenceItemsFromRetrievals(retrievals) {
+  return (retrievals || [])
+    .map((retrieval) => ({
+      nodeId: retrieval.nodeId,
+      nodeName: retrieval.nodeName,
+      collection: retrieval.collection,
+      retrievalMode: retrieval.retrievalMode,
+      evidence: retrieval.graphEvidence,
+    }))
+    .filter((item) => item.evidence && (
+      item.evidence.entities?.length ||
+      item.evidence.relationships?.length ||
+      item.evidence.paths?.length ||
+      item.evidence.chunks?.length ||
+      item.evidence.detectedEntities?.length ||
+      item.evidence.message
+    ));
+}
+
+function uniqueValues(values) {
+  return Array.from(new Set((values || []).map((value) => String(value || "").trim()).filter(Boolean)));
+}
+
+function McpCallsPanel({ calls }) {
+  return (
+    <section className="mcp-panel">
+      <div className="section-header">
+        <div>
+          <h2>MCP Calls</h2>
+          <p>{calls.length ? `${calls.length} MCP tool call(s) executed.` : "No MCP tool run yet."}</p>
+        </div>
+      </div>
+      <div className="mcp-call-grid">
+        {calls.length ? calls.map((call, index) => {
+          const status = call.error ? "error" : call.status || "completed";
+          return (
+            <article key={`${call.nodeId}-${call.toolId}-${call.timestamp || index}`} className={`mcp-call-card ${status}`}>
+              <div className="mcp-call-header">
+                <div>
+                  <strong>{call.toolId}</strong>
+                  <span>{call.server || "demo"}</span>
+                </div>
+                <StatusBadge status={status} />
+              </div>
+              <div className="mcp-call-meta">
+                <span>Node: {call.nodeId}</span>
+                {call.timestamp ? <span>{call.timestamp}</span> : null}
+              </div>
+              {call.error ? <p className="mcp-call-error">{call.error}</p> : null}
+              <details className="raw-details">
+                <summary>Arguments and result</summary>
+                <pre>{JSON.stringify({ arguments: call.arguments, result: call.result }, null, 2)}</pre>
+              </details>
+            </article>
+          );
+        }) : (
+          <div className="panel-empty-state">
+            <strong>No MCP calls yet</strong>
+            <span>Run a workflow with an MCP tool node to inspect tool arguments and results.</span>
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function StatusBadge({ status }) {
+  const labels = {
+    idle: "Idle",
+    running: "Running",
+    completed: "Done",
+    success: "Done",
+    skipped: "Skipped",
+    warning: "Warn",
+    error: "Error",
+  };
+  return <span className={`status-badge ${status}`}>{labels[status] || status}</span>;
+}
+
 
 function selectionLabel(node, edge) {
   if (node) {

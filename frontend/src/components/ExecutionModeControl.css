@@ -3,10 +3,14 @@
   align-items: center;
   gap: 16px;
   padding: 8px 16px;
-  background-color: #f9f9f9;
-  border: 1px solid #e0e0e0;
-  border-radius: 4px;
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.058), rgba(255, 255, 255, 0.018)),
+    rgba(13, 22, 39, 0.78);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-md);
+  color: var(--text-soft);
   font-size: 13px;
+  box-shadow: var(--shadow-soft);
 }
 
 .mode-selector {
@@ -16,17 +20,18 @@
 }
 
 .mode-selector label {
-  font-weight: 500;
-  color: #333;
+  font-weight: 700;
+  color: var(--text-main);
   white-space: nowrap;
 }
 
 .mode-buttons {
   display: flex;
   gap: 4px;
-  background-color: #f0f0f0;
+  background-color: rgba(5, 10, 22, 0.48);
   padding: 2px;
-  border-radius: 4px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
 }
 
 .mode-btn {
@@ -36,9 +41,9 @@
   padding: 6px 12px;
   background-color: transparent;
   border: 1px solid transparent;
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
   cursor: pointer;
-  color: #666;
+  color: var(--text-muted);
   font-size: 12px;
   font-weight: 500;
   transition: all 0.2s ease;
@@ -46,15 +51,15 @@
 }
 
 .mode-btn:hover:not(:disabled) {
-  background-color: #e0e0e0;
-  color: #333;
+  background-color: rgba(23, 37, 64, 0.78);
+  color: var(--text-main);
 }
 
 .mode-btn.active {
-  background-color: #fff;
-  border-color: #2196f3;
-  color: #2196f3;
-  box-shadow: 0 1px 3px rgba(33, 150, 243, 0.3);
+  background-color: rgba(73, 214, 255, 0.14);
+  border-color: rgba(110, 231, 255, 0.36);
+  color: var(--text-main);
+  box-shadow: var(--glow-cyan);
 }
 
 .mode-btn:disabled {
@@ -72,19 +77,19 @@
   align-items: center;
   gap: 6px;
   padding: 6px 12px;
-  border: 1px solid #ddd;
-  border-radius: 4px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
   cursor: pointer;
   font-size: 12px;
   font-weight: 500;
   transition: all 0.2s ease;
-  background-color: #fff;
-  color: #333;
+  background-color: rgba(5, 10, 22, 0.48);
+  color: var(--text-soft);
 }
 
 .run-all-btn:hover:not(:disabled) {
-  border-color: #2196f3;
-  background-color: #f5f5f5;
+  border-color: rgba(110, 231, 255, 0.34);
+  background-color: rgba(23, 37, 64, 0.78);
 }
 
 .run-all-btn.sequential {
@@ -92,7 +97,7 @@
 }
 
 .run-all-btn.sequential:hover:not(:disabled) {
-  border-left-color: #2196f3;
+  border-left-color: var(--accent-cyan);
 }
 
 .run-all-btn.parallel {
@@ -100,7 +105,7 @@
 }
 
 .run-all-btn.parallel:hover:not(:disabled) {
-  border-left-color: #2196f3;
+  border-left-color: var(--accent-cyan);
 }
 
 .run-all-btn:disabled {
@@ -110,6 +115,54 @@
 
 .mode-hint {
   font-size: 12px;
-  color: #999;
+  color: var(--text-muted);
   font-style: italic;
+}
+
+:root[data-theme="light"] .execution-mode-control {
+  background: #ffffff;
+  border-color: rgba(10, 10, 10, 0.14);
+  color: var(--text-soft);
+  box-shadow: var(--shadow-card);
+}
+
+:root[data-theme="light"] .mode-selector label {
+  color: var(--text-main);
+}
+
+:root[data-theme="light"] .mode-buttons {
+  background-color: #f8f8f6;
+  border-color: rgba(10, 10, 10, 0.1);
+}
+
+:root[data-theme="light"] .mode-btn {
+  color: var(--text-muted);
+}
+
+:root[data-theme="light"] .mode-btn:hover:not(:disabled) {
+  background-color: #ffffff;
+  color: var(--text-main);
+}
+
+:root[data-theme="light"] .mode-btn.active {
+  background-color: #0a0a0a;
+  border-color: #0a0a0a;
+  color: #ffffff;
+  box-shadow: var(--shadow-button);
+}
+
+:root[data-theme="light"] .run-all-btn {
+  background-color: #ffffff;
+  border-color: rgba(10, 10, 10, 0.16);
+  color: var(--text-main);
+}
+
+:root[data-theme="light"] .run-all-btn:hover:not(:disabled) {
+  background-color: #ffffff;
+  border-color: rgba(10, 10, 10, 0.34);
+  box-shadow: var(--shadow-button);
+}
+
+:root[data-theme="light"] .mode-hint {
+  color: var(--text-muted);
 }

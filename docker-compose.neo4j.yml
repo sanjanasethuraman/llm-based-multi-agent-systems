@@ -2,15 +2,21 @@ services:
   neo4j:
     image: neo4j:5-community
     container_name: visual-mas-neo4j
+    restart: unless-stopped
     ports:
       - "7474:7474"
       - "7687:7687"
     environment:
-      NEO4J_AUTH: neo4j/visualmas
+      NEO4J_AUTH: ${NEO4J_USER:-neo4j}/${NEO4J_PASSWORD:-visualmas}
       NEO4J_PLUGINS: '["apoc"]'
     volumes:
       - neo4j_data:/data
       - neo4j_logs:/logs
+    healthcheck:
+      test: ["CMD-SHELL", "cypher-shell -u ${NEO4J_USER:-neo4j} -p ${NEO4J_PASSWORD:-visualmas} 'RETURN 1' || exit 1"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
 
 volumes:
   neo4j_data:

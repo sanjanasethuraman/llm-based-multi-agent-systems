@@ -23,6 +23,7 @@ class RetrieverNodeExecutor(NodeExecutor):
         if graph_evidence:
             context["stats"]["graphEntities"] = context["stats"].get("graphEntities", 0) + len(graph_evidence.get("entities", []))
             context["stats"]["graphRelationships"] = context["stats"].get("graphRelationships", 0) + len(graph_evidence.get("relationships", []))
+            context["stats"]["graphPaths"] = context["stats"].get("graphPaths", 0) + len(graph_evidence.get("paths", []))
         context["retrievals"].append({
             "nodeId": node["id"],
             "nodeType": node["type"],

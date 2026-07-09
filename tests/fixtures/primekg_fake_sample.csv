@@ -1,0 +1,5 @@
+relation,display_relation,x_id,x_name,x_type,x_source,y_id,y_name,y_type,y_source
+indication,indication,DRUG:fake-cgrp,Fictional CGRP Blocker - FAKE TEST DATA ONLY,drug,fake-test-only,DISEASE:fake-migraine,Example Migraine - FAKE TEST DATA ONLY,disease,fake-test-only
+associated_with,associated with,GENE:fake-cgrp,CALCA Example Gene - FAKE TEST DATA ONLY,gene,fake-test-only,DISEASE:fake-migraine,Example Migraine - FAKE TEST DATA ONLY,disease,fake-test-only
+participates_in,participates in,GENE:fake-cgrp,CALCA Example Gene - FAKE TEST DATA ONLY,gene,fake-test-only,PATHWAY:fake-trigeminovascular,Example Trigeminovascular Pathway - FAKE TEST DATA ONLY,pathway,fake-test-only
+causes,causes,DISEASE:fake-flu,Example Flu - FAKE TEST DATA ONLY,disease,fake-test-only,PHENO:fake-fever,Example Fever - FAKE TEST DATA ONLY,phenotype,fake-test-only

@@ -2,9 +2,9 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 8px 16px;
-  background-color: #f5f5f5;
-  border-bottom: 1px solid #ddd;
+  padding: 0;
+  background: transparent;
+  border-bottom: 0;
   overflow-x: auto;
 }
 
@@ -26,22 +26,23 @@
 }
 
 .workflow-tabs::-webkit-scrollbar-thumb {
-  background: #ccc;
-  border-radius: 3px;
+  background: rgba(148, 163, 184, 0.28);
+  border-radius: 999px;
 }
 
 .workflow-tabs::-webkit-scrollbar-thumb:hover {
-  background: #999;
+  background: rgba(148, 163, 184, 0.48);
 }
 
 .workflow-tab {
   display: flex;
   align-items: center;
   gap: 8px;
+  min-height: 36px;
   padding: 8px 12px;
-  background-color: #e9ecef;
-  border: 1px solid #dee2e6;
-  border-radius: 4px 4px 0 0;
+  background: rgba(15, 23, 42, 0.62);
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 999px;
   cursor: pointer;
   transition: all 0.2s ease;
   white-space: nowrap;
@@ -49,21 +50,50 @@
 }
 
 .workflow-tab:hover {
-  background-color: #dfe3e9;
+  background: rgba(23, 37, 64, 0.86);
+  border-color: rgba(110, 231, 255, 0.34);
 }
 
 .workflow-tab.active {
-  background-color: #fff;
-  border-bottom-color: #fff;
-  box-shadow: 0 -2px 4px rgba(0, 0, 0, 0.05);
+  background: linear-gradient(135deg, rgba(73, 214, 255, 0.16), rgba(139, 92, 246, 0.14));
+  border-color: rgba(110, 231, 255, 0.38);
+  box-shadow: 0 0 24px rgba(73, 214, 255, 0.12);
+}
+
+:root[data-theme="light"] .workflow-tab {
+  background: #ffffff;
+  border-color: rgba(10, 10, 10, 0.16);
+  color: var(--text-main);
+  box-shadow: 1px 1px 0 rgba(10, 10, 10, 0.06);
+}
+
+:root[data-theme="light"] .workflow-tab:hover {
+  background: #ffffff;
+  border-color: rgba(10, 10, 10, 0.34);
+  box-shadow: var(--shadow-button);
+}
+
+:root[data-theme="light"] .workflow-tab.active {
+  background: #0a0a0a;
+  border-color: #0a0a0a;
+  color: #ffffff;
+  box-shadow: var(--shadow-button);
 }
 
 .tab-name {
   font-weight: 500;
   font-size: 13px;
-  color: #333;
+  color: var(--text-soft, #dbe7f6);
   cursor: text;
   user-select: none;
+}
+
+:root[data-theme="light"] .workflow-tab .tab-name {
+  color: var(--text-main);
+}
+
+:root[data-theme="light"] .workflow-tab.active .tab-name {
+  color: #ffffff;
 }
 
 .tab-name:hover {
@@ -126,14 +156,23 @@
   background: transparent;
   border: none;
   cursor: pointer;
-  color: #666;
-  border-radius: 2px;
+  color: var(--text-muted, #93a4bb);
+  border-radius: 999px;
   transition: all 0.2s ease;
 }
 
 .tab-action-btn:hover:not(:disabled) {
-  background-color: rgba(0, 0, 0, 0.1);
-  color: #333;
+  background-color: rgba(148, 163, 184, 0.14);
+  color: var(--text-main, #f7fbff);
+}
+
+:root[data-theme="light"] .workflow-tab.active .tab-action-btn {
+  color: rgba(255, 255, 255, 0.82);
+}
+
+:root[data-theme="light"] .workflow-tab.active .tab-action-btn:hover:not(:disabled) {
+  background-color: rgba(255, 255, 255, 0.16);
+  color: #ffffff;
 }
 
 .tab-action-btn:disabled {
@@ -148,17 +187,30 @@
   width: 32px;
   height: 32px;
   padding: 0;
-  background-color: #e9ecef;
-  border: 1px solid #dee2e6;
-  border-radius: 4px;
+  background: rgba(15, 23, 42, 0.72);
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  border-radius: 999px;
   cursor: pointer;
-  color: #666;
+  color: var(--text-soft, #dbe7f6);
   transition: all 0.2s ease;
   flex-shrink: 0;
 }
 
 .add-tab-btn:hover {
-  background-color: #dfe3e9;
-  color: #333;
-  border-color: #adb5bd;
+  background: rgba(23, 37, 64, 0.9);
+  color: var(--text-main, #f7fbff);
+  border-color: rgba(110, 231, 255, 0.38);
+}
+
+:root[data-theme="light"] .add-tab-btn {
+  background: #ffffff;
+  border-color: rgba(10, 10, 10, 0.16);
+  color: var(--text-main);
+}
+
+:root[data-theme="light"] .add-tab-btn:hover {
+  background: #0a0a0a;
+  border-color: #0a0a0a;
+  color: #ffffff;
+  box-shadow: var(--shadow-button);
 }
