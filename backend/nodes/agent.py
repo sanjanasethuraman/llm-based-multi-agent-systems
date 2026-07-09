@@ -1,14 +1,27 @@
 from .base import NodeExecutor
-from backend.utils import collect_incoming_map, get_available_tools, log_node
+from backend.utils import collect_incoming_map, get_all_tools, get_available_tools, log_node
 from backend.utils import is_tool_managed_by_agent
 from backend.agents import get_agent_provider
+import logging
+logger = logging.getLogger(__name__)
 
 class AgentNodeExecutor(NodeExecutor):
     node_type = "agent"
 
     async def execute(self, node, context):
         if node.get("type") == "sub_agent" and is_tool_managed_by_agent(node["id"], context["edges"], context["nodes"]):
-            return "", {"status": "skipped", "message": "Sub-agent is managed by an agent and is not executed automatically."}
+            called_tools = context.get("agentToolCalls", [])
+            if node["id"] in called_tools:
+                log_node(node["id"], context, "Sub-Agent is managed by an agent and was executed by the agent.", status="completed", node_type=node.get("type"))
+                return "", {
+                    "status": "completed",
+                    "message": "Sub-Agent is managed by an agent and was executed by the agent.",
+                }
+            log_node(node["id"], context, "Sub-Agent is managed by an agent and was not executed automatically.", status="warning", node_type=node.get("type"))
+            return "", {
+                "status": "skipped",
+                "message": "Sub-Agent is managed by an agent and was not executed automatically.",
+            }
 
         config = node.get("config", {})
         incoming = collect_incoming_map(node["id"], context["edges"], context["values"], context["nodes"])
@@ -29,7 +42,7 @@ class AgentNodeExecutor(NodeExecutor):
         context["stats"]["subAgentCalls"] += sub_agent_calls
 
         for call in called_tools:
-            matches = [tool for tool in available_tools if tool.get("tool_name") == call.get("tool_name") and tool.get("server_id") == call.get("server_id")]
+            matches = [tool for tool in get_all_tools(context["nodes"], context["edges"]) if tool.get("tool_name") == call.get("tool_name") and tool.get("server_id") == call.get("server_id")]
             for tool in matches:
                 context.setdefault("agentToolCalls", []).append(tool.get("node_id"))
 

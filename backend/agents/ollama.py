@@ -1,3 +1,5 @@
+from backend.agents.proxy_tool_client import ProxyToolClient
+
 from .base import AgentProvider
 import json
 from ollama import chat, ChatResponse
@@ -51,7 +53,7 @@ class OllamaProvider(AgentProvider):
         available = {(tool["server_id"], tool["tool_name"]) for tool in available_tools}
         logger.debug(f"available: {available}")
         ollama_tools = []
-        tool_map = {}
+        tool_map = {str : (str, ProxyToolClient)}
         for server_id, client in mcp_registry.all_clients().items():
             for tool in await client.list_tools():
                 logger.debug(f"available tool: {server_id}: {tool.name}")
@@ -93,7 +95,6 @@ class OllamaProvider(AgentProvider):
                     server_id, client = tool_map[name]
                     # Distinguish between normal tools and sub-agent tools by server id
                     if str(server_id).startswith("sub-agent-"):
-                        sub_agent_calls += 1
                         provider_logs.append({
                             "status": "info",
                             "message": f"Ollama requested sub-agent tool '{name}' on server '{server_id}'.",
@@ -111,18 +112,42 @@ class OllamaProvider(AgentProvider):
                     })
 
                     try:
-                        result = await asyncio.wait_for(
+                        raw = await asyncio.wait_for(
                             client.call_tool(name, tool_call.function.arguments or {}),
                             timeout=300.0
                         )
                     except asyncio.TimeoutError:
                         logger.error(f"Tool call {name} timed out")
-                        result = {"error": "Tool call timed out"}
+                        raw = {"error": "Tool call timed out"}
+
+                    if isinstance(raw, str):
+                        try:
+                            parsed = json.loads(raw)
+                            if isinstance(parsed, dict) and "text" in parsed and "stats" in parsed:
+                                raw = parsed
+                        except (json.JSONDecodeError, TypeError):
+                            pass
+
+                    if isinstance(raw, dict) and "stats" in raw:
+                        sub_stats = raw["stats"]
+                        tool_calls += sub_stats.get("toolCalls", 0)
+                        sub_agent_calls += sub_stats.get("subAgentCalls", 0) + 1
+                        called_tools.extend(sub_stats.get("calledTools", []))
+                        provider_logs.extend(sub_stats.get("providerLogs", []))
+                        result_text = raw.get("result", "")
+                        provider_logs.append({
+                            "status": "info",
+                            "message": f"Sub-agent '{name}' completed with {sub_stats.get('toolCalls', 0)} tool call(s) and {sub_stats.get('subAgentCalls', 0)} sub-agent call(s).",
+                        })
+                    elif isinstance(raw, dict) and "error" in raw:
+                        result_text = json.dumps(raw)
+                    else:
+                        result_text = str(raw) if raw is not None else ""
                     
                     messages.append({
                         "role": "tool",
                         "name": tool_call.function.name,
-                        "content": json.dumps({"result": result}),
+                        "content": json.dumps({"result": result_text}),
                     })
             else:
                 logger.info("No tool calls, breaking out of loop.")
