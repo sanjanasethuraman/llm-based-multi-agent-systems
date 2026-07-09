@@ -13,8 +13,88 @@ import GraphToolbar from "./GraphToolbar.jsx";
 const GRAPH_HEIGHT = 680;
 const EMPTY_GRAPH = { nodes: [], links: [] };
 const ForceGraph3D = lazy(() => import("react-force-graph-3d"));
+const DARK_GRAPH_PALETTE = {
+  nodeTypes: {
+    disease: "#fb7185",
+    drug: "#60a5fa",
+    "gene/protein": "#a78bfa",
+    pathway: "#34d399",
+    phenotype: "#fbbf24",
+    biological_process: "#2dd4bf",
+    molecular_function: "#22d3ee",
+    anatomy: "#94a3b8",
+    exposure: "#c084fc",
+    other: "#64748b",
+  },
+  nodeStroke: "rgba(226, 232, 240, 0.75)",
+  nodeSelectedStroke: "#f8fafc",
+  nodeSelectedHalo: "rgba(248, 250, 252, 0.86)",
+  nodeNeighborHalo: "rgba(125, 211, 252, 0.64)",
+  nodeFadedAlpha: 0.22,
+  nodeSelected3d: "#ffffff",
+  nodeFaded3d: "rgba(100, 116, 139, 0.38)",
+  labelBg: "rgba(5, 12, 28, 0.74)",
+  labelBgStrong: "rgba(5, 12, 28, 0.92)",
+  labelBorder: "rgba(148, 163, 184, 0.18)",
+  labelBorderStrong: "rgba(248, 250, 252, 0.46)",
+  labelText: "#e5f0ff",
+  labelTextStrong: "#ffffff",
+  labelFadedAlpha: 0.28,
+  linkDefault: "rgba(148, 163, 184, 0.32)",
+  linkFaded: "rgba(100, 116, 139, 0.18)",
+  linkFocus: "rgba(125, 211, 252, 0.82)",
+  linkSelected: "rgba(255, 255, 255, 0.88)",
+  linkLabelBg: "rgba(3, 7, 18, 0.72)",
+  linkLabelBgStrong: "rgba(3, 7, 18, 0.9)",
+  linkLabelBorder: "rgba(148, 163, 184, 0.18)",
+  linkLabelBorderStrong: "rgba(248, 250, 252, 0.36)",
+  linkLabelText: "#b8c7dc",
+  linkLabelTextStrong: "#ffffff",
+  threeBackground: "rgba(0,0,0,0)",
+  threeLinkOpacity: 1,
+};
+const LIGHT_GRAPH_PALETTE = {
+  nodeTypes: {
+    disease: "#d92d20",
+    drug: "#176a3a",
+    "gene/protein": "#155e63",
+    pathway: "#6f5f3f",
+    phenotype: "#8a5a00",
+    biological_process: "#3f6f63",
+    molecular_function: "#1f4f66",
+    anatomy: "#5f6368",
+    exposure: "#7a4f2b",
+    other: "#4f5458",
+  },
+  nodeStroke: "rgba(255, 255, 255, 0.92)",
+  nodeSelectedStroke: "#0a0a0a",
+  nodeSelectedHalo: "rgba(10, 10, 10, 0.66)",
+  nodeNeighborHalo: "rgba(10, 10, 10, 0.34)",
+  nodeFadedAlpha: 0.38,
+  nodeSelected3d: "#0a0a0a",
+  nodeFaded3d: "rgba(95, 99, 104, 0.46)",
+  labelBg: "rgba(255, 255, 255, 0.94)",
+  labelBgStrong: "rgba(10, 10, 10, 0.92)",
+  labelBorder: "rgba(10, 10, 10, 0.14)",
+  labelBorderStrong: "rgba(10, 10, 10, 0.45)",
+  labelText: "#0a0a0a",
+  labelTextStrong: "#ffffff",
+  labelFadedAlpha: 0.44,
+  linkDefault: "rgba(10, 10, 10, 0.32)",
+  linkFaded: "rgba(95, 99, 104, 0.24)",
+  linkFocus: "rgba(10, 10, 10, 0.76)",
+  linkSelected: "rgba(10, 10, 10, 0.9)",
+  linkLabelBg: "rgba(255, 255, 255, 0.92)",
+  linkLabelBgStrong: "rgba(10, 10, 10, 0.92)",
+  linkLabelBorder: "rgba(10, 10, 10, 0.14)",
+  linkLabelBorderStrong: "rgba(10, 10, 10, 0.5)",
+  linkLabelText: "#3a352e",
+  linkLabelTextStrong: "#ffffff",
+  threeBackground: "rgba(0,0,0,0)",
+  threeLinkOpacity: 1,
+};
 
-export default function PrimeKGGraphExplorer({ graph, retrievals = [], loading = false, error = "" }) {
+export default function PrimeKGGraphExplorer({ graph, retrievals = [], loading = false, error = "", onGraphModeChange }) {
   const graphRef = useRef(null);
   const shellRef = useRef(null);
   const [size, setSize] = useState({ width: 960, height: GRAPH_HEIGHT });
@@ -33,8 +113,10 @@ export default function PrimeKGGraphExplorer({ graph, retrievals = [], loading =
   const [graphMode, setGraphMode] = useState("2d");
   const [webglAvailable, setWebglAvailable] = useState(true);
   const [focusMode, setFocusMode] = useState("overview");
+  const [theme, setTheme] = useState(getDocumentTheme);
 
   const adapted = useMemo(() => adaptPrimeKGGraph(graph), [graph]);
+  const graphPalette = useMemo(() => getGraphPalette(theme), [theme]);
   const visibleNodeTypes = useMemo(() => Object.keys(adapted.nodeTypes || {}).filter((type) => !hiddenNodeTypes.has(type)), [adapted.nodeTypes, hiddenNodeTypes]);
   const visibleRelationTypes = useMemo(() => Object.keys(adapted.relationTypes || {}).filter((type) => !hiddenRelationTypes.has(type)), [adapted.relationTypes, hiddenRelationTypes]);
   const filtered = useMemo(() => {
@@ -101,10 +183,24 @@ export default function PrimeKGGraphExplorer({ graph, retrievals = [], loading =
   }, []);
 
   useEffect(() => {
+    if (typeof document === "undefined" || typeof MutationObserver === "undefined") {
+      return undefined;
+    }
+    const root = document.documentElement;
+    const observer = new MutationObserver(() => setTheme(getDocumentTheme()));
+    observer.observe(root, { attributes: true, attributeFilter: ["data-theme"] });
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
     if (graphMode === "3d" && !webglAvailable) {
       setGraphMode("2d");
     }
   }, [graphMode, webglAvailable]);
+
+  useEffect(() => {
+    onGraphModeChange?.(graphMode);
+  }, [graphMode, onGraphModeChange]);
 
   useEffect(() => {
     setSelectedNode((current) => current && graphData.nodes.find((node) => node.id === current.id) ? current : null);
@@ -128,6 +224,10 @@ export default function PrimeKGGraphExplorer({ graph, retrievals = [], loading =
       graphRef.current.d3ReheatSimulation?.();
     }
   }, [frozen]);
+
+  useEffect(() => {
+    graphRef.current?.d3ReheatSimulation?.();
+  }, [theme]);
 
   useEffect(() => () => {
     graphRef.current?.pauseAnimation?.();
@@ -279,6 +379,7 @@ export default function PrimeKGGraphExplorer({ graph, retrievals = [], loading =
         relationTypes={adapted.relationTypes}
         hiddenNodeTypes={hiddenNodeTypes}
         hiddenRelationTypes={hiddenRelationTypes}
+        nodeTypeColors={graphPalette.nodeTypes}
         onToggleNodeType={handleToggleNodeType}
         onToggleRelationType={handleToggleRelationType}
       />
@@ -306,20 +407,21 @@ export default function PrimeKGGraphExplorer({ graph, retrievals = [], loading =
                 nodeId="id"
                 nodeVal={(node) => node3dValue(node)}
                 nodeLabel={(node) => `${node.name}\n${node.type}\nDegree ${node.degree}`}
-                nodeColor={(node) => node3dColor(node, focus, selectedNodeId, hoveredNodeId)}
+                nodeColor={(node) => node3dColor(node, focus, selectedNodeId, hoveredNodeId, graphPalette)}
                 nodeOpacity={0.96}
                 linkSource="source"
                 linkTarget="target"
                 linkLabel={(link) => link.label}
-                linkColor={(link) => linkColor(link, focus, selectedLink)}
-                linkOpacity={focus.active ? 0.32 : 0.18}
+                linkColor={(link) => linkColor(link, focus, selectedLink, graphPalette)}
+                linkOpacity={graphPalette.threeLinkOpacity}
                 linkWidth={(link) => isFocusedLink(link, focus, selectedLink) ? 2 : 0.7}
                 linkDirectionalParticles={(link) => isFocusedLink(link, focus, selectedLink) ? 3 : graphData.links.length <= 80 ? 1 : 0}
+                linkDirectionalParticleColor={(link) => linkColor(link, focus, selectedLink, graphPalette)}
                 linkDirectionalParticleWidth={(link) => isFocusedLink(link, focus, selectedLink) ? 2.5 : 0.7}
                 cooldownTicks={120}
                 d3AlphaDecay={0.028}
                 d3VelocityDecay={0.28}
-                backgroundColor="rgba(0,0,0,0)"
+                backgroundColor={graphPalette.threeBackground}
                 onNodeHover={(node) => setHoveredNode(node || null)}
                 onNodeClick={(node) => {
                   setSelectedNode(node);
@@ -377,6 +479,7 @@ export default function PrimeKGGraphExplorer({ graph, retrievals = [], loading =
                 focus,
                 zoomLevel,
                 graphSize: graphData.nodes.length,
+                palette: graphPalette,
               })}
               linkCanvasObjectMode={() => "after"}
               linkCanvasObject={(link, ctx, globalScale) => paintLinkLabel(link, ctx, globalScale, {
@@ -384,9 +487,11 @@ export default function PrimeKGGraphExplorer({ graph, retrievals = [], loading =
                 focus,
                 zoomLevel,
                 graphSize: graphData.links.length,
+                palette: graphPalette,
               })}
-              linkColor={(link) => linkColor(link, focus, selectedLink)}
+              linkColor={(link) => linkColor(link, focus, selectedLink, graphPalette)}
               linkWidth={(link) => isFocusedLink(link, focus, selectedLink) ? 2.2 : 0.8}
+              linkDirectionalParticleColor={(link) => linkColor(link, focus, selectedLink, graphPalette)}
             />
           )}
           <div className="primekg-zoom-readout">
@@ -401,6 +506,7 @@ export default function PrimeKGGraphExplorer({ graph, retrievals = [], loading =
           adjacency={adapted.adjacency}
           nodesById={nodesById}
           selected={Boolean(selectedNode || selectedLink)}
+          nodeTypeColors={graphPalette.nodeTypes}
           onFocusNode={selectAndFocusNode}
           onHoverLink={handleHoverLink}
         />
@@ -488,46 +594,58 @@ function nodeRankWeight(node) {
 }
 
 function paintNode(node, ctx, globalScale, state) {
+  const palette = state.palette || DARK_GRAPH_PALETTE;
   const focused = state.selectedNodeId === node.id || state.hoveredNodeId === node.id;
   const neighbor = state.focus.nodes.has(node.id);
   const faded = state.focus.active && !focused && !neighbor;
   const radius = nodeRadius(node);
 
   ctx.save();
-  ctx.globalAlpha = faded ? 0.22 : 1;
+  ctx.globalAlpha = faded ? palette.nodeFadedAlpha : 1;
   const glow = focused ? 18 : neighbor ? 10 : 0;
   if (glow) {
-    ctx.shadowColor = node.color || typeColor(node.type);
+    ctx.shadowColor = focused ? palette.nodeSelectedHalo : typeColor(node.type, palette);
     ctx.shadowBlur = glow;
+  }
+  if (focused || neighbor) {
+    ctx.beginPath();
+    ctx.arc(node.x, node.y, radius + (focused ? 5.5 : 3.5), 0, 2 * Math.PI, false);
+    ctx.lineWidth = Math.max(2, (focused ? 5 : 3) / Math.max(1, globalScale * 0.7));
+    ctx.strokeStyle = focused ? palette.nodeSelectedHalo : palette.nodeNeighborHalo;
+    ctx.stroke();
   }
   ctx.beginPath();
   ctx.arc(node.x, node.y, radius, 0, 2 * Math.PI, false);
-  ctx.fillStyle = node.color || typeColor(node.type);
+  ctx.fillStyle = typeColor(node.type, palette);
   ctx.fill();
   ctx.lineWidth = focused ? 2.8 : 1.2;
-  ctx.strokeStyle = focused ? "#f8fafc" : "rgba(226, 232, 240, 0.75)";
+  ctx.strokeStyle = focused ? palette.nodeSelectedStroke : palette.nodeStroke;
   ctx.stroke();
   ctx.restore();
 
   if (shouldShowLabel(node, focused, neighbor, state)) {
-    paintNodeLabel(node, ctx, globalScale, radius, faded);
+    paintNodeLabel(node, ctx, globalScale, radius, { faded, focused, neighbor, palette });
   }
 }
 
-function paintNodeLabel(node, ctx, globalScale, radius, faded) {
+function paintNodeLabel(node, ctx, globalScale, radius, state) {
   const label = truncate(node.label || node.name || node.id, 34);
   const fontSize = Math.max(9, 13 / Math.max(1, globalScale * 0.58));
+  const emphasized = state.focused || state.neighbor;
   ctx.save();
-  ctx.globalAlpha = faded ? 0.28 : 0.96;
-  ctx.font = `600 ${fontSize}px Inter, system-ui, sans-serif`;
+  ctx.globalAlpha = state.faded ? state.palette.labelFadedAlpha : 0.98;
+  ctx.font = `${emphasized ? 760 : 620} ${fontSize}px Inter, system-ui, sans-serif`;
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
-  const width = ctx.measureText(label).width + 12;
+  const width = ctx.measureText(label).width + 14;
   const y = node.y + radius + fontSize * 0.9;
-  roundRect(ctx, node.x - width / 2, y - fontSize / 2 - 4, width, fontSize + 8, 7);
-  ctx.fillStyle = "rgba(5, 12, 28, 0.72)";
+  roundRect(ctx, node.x - width / 2, y - fontSize / 2 - 5, width, fontSize + 10, 7);
+  ctx.fillStyle = emphasized ? state.palette.labelBgStrong : state.palette.labelBg;
   ctx.fill();
-  ctx.fillStyle = "#e5f0ff";
+  ctx.lineWidth = 1;
+  ctx.strokeStyle = emphasized ? state.palette.labelBorderStrong : state.palette.labelBorder;
+  ctx.stroke();
+  ctx.fillStyle = emphasized ? state.palette.labelTextStrong : state.palette.labelText;
   ctx.fillText(label, node.x, y);
   ctx.restore();
 }
@@ -545,15 +663,20 @@ function paintLinkLabel(link, ctx, globalScale, state) {
   const midX = (source.x + target.x) / 2;
   const midY = (source.y + target.y) / 2;
   const fontSize = Math.max(7, 10 / Math.max(1, globalScale * 0.55));
+  const selected = isFocusedLink(link, state.focus, state.selectedLink);
+  const palette = state.palette || DARK_GRAPH_PALETTE;
   ctx.save();
-  ctx.font = `500 ${fontSize}px Inter, system-ui, sans-serif`;
+  ctx.font = `${selected ? 720 : 560} ${fontSize}px Inter, system-ui, sans-serif`;
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
   const width = ctx.measureText(label).width + 10;
   roundRect(ctx, midX - width / 2, midY - fontSize / 2 - 3, width, fontSize + 6, 6);
-  ctx.fillStyle = "rgba(3, 7, 18, 0.72)";
+  ctx.fillStyle = selected ? palette.linkLabelBgStrong : palette.linkLabelBg;
   ctx.fill();
-  ctx.fillStyle = "#b8c7dc";
+  ctx.lineWidth = 1;
+  ctx.strokeStyle = selected ? palette.linkLabelBorderStrong : palette.linkLabelBorder;
+  ctx.stroke();
+  ctx.fillStyle = selected ? palette.linkLabelTextStrong : palette.linkLabelText;
   ctx.fillText(label, midX, midY);
   ctx.restore();
 }
@@ -764,11 +887,11 @@ function isFocusedLink(link, focus, selectedLink) {
   return selectedLink?.id === link.id || focus.links.has(link.id);
 }
 
-function linkColor(link, focus, selectedLink) {
-  if (selectedLink?.id === link.id) return "rgba(255, 255, 255, 0.88)";
-  if (focus.links.has(link.id)) return "rgba(125, 211, 252, 0.82)";
-  if (focus.active) return "rgba(100, 116, 139, 0.18)";
-  return "rgba(148, 163, 184, 0.32)";
+function linkColor(link, focus, selectedLink, palette = DARK_GRAPH_PALETTE) {
+  if (selectedLink?.id === link.id) return palette.linkSelected;
+  if (focus.links.has(link.id)) return palette.linkFocus;
+  if (focus.active) return palette.linkFaded;
+  return palette.linkDefault;
 }
 
 function node3dValue(node) {
@@ -776,12 +899,12 @@ function node3dValue(node) {
   return Math.min(base + Math.sqrt(Math.max(0, node.degree || 0)) * 1.8, 20);
 }
 
-function node3dColor(node, focus, selectedNodeId, hoveredNodeId) {
+function node3dColor(node, focus, selectedNodeId, hoveredNodeId, palette = DARK_GRAPH_PALETTE) {
   const focused = selectedNodeId === node.id || hoveredNodeId === node.id;
   const neighbor = focus.nodes.has(node.id);
-  if (focused) return "#ffffff";
-  if (focus.active && !neighbor) return "rgba(100, 116, 139, 0.38)";
-  return node.color || typeColor(node.type);
+  if (focused) return palette.nodeSelected3d;
+  if (focus.active && !neighbor) return palette.nodeFaded3d;
+  return typeColor(node.type, palette);
 }
 
 function nodeRadius(node) {
@@ -796,20 +919,19 @@ function shouldShowLabel(node, focused, neighbor, state) {
   return node.type === "disease" && state.zoomLevel > 1.1;
 }
 
-function typeColor(type) {
-  const colors = {
-    disease: "#fb7185",
-    drug: "#60a5fa",
-    "gene/protein": "#a78bfa",
-    pathway: "#34d399",
-    phenotype: "#fbbf24",
-    biological_process: "#2dd4bf",
-    molecular_function: "#22d3ee",
-    anatomy: "#94a3b8",
-    exposure: "#c084fc",
-    other: "#64748b",
-  };
-  return colors[type] || colors.other;
+function typeColor(type, palette = DARK_GRAPH_PALETTE) {
+  return palette.nodeTypes[type] || palette.nodeTypes.other;
+}
+
+function getDocumentTheme() {
+  if (typeof document === "undefined") {
+    return "dark";
+  }
+  return document.documentElement.dataset.theme === "light" ? "light" : "dark";
+}
+
+function getGraphPalette(theme) {
+  return theme === "light" ? LIGHT_GRAPH_PALETTE : DARK_GRAPH_PALETTE;
 }
 
 function toggleSet(setter, value) {

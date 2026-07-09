@@ -401,7 +401,14 @@ def main():
     preferred_port = int(os.environ.get("VISUAL_MAS_PORT", "8000"))
     server, port = create_server(host, preferred_port)
     print(f"Serving prototype at http://{host}:{port}")
-    server.serve_forever()
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        print("\nServer stopped.")
+    finally:
+        server.server_close()
+        if _loop and _loop.is_running():
+            _loop.call_soon_threadsafe(_loop.stop)
 
 
 def create_server(host, preferred_port):

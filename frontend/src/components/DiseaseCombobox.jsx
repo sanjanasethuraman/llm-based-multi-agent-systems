@@ -145,7 +145,7 @@ export default function DiseaseCombobox({
               PrimeKG kg.csv not found. Download/place it in data/primekg/kg.csv.
             </div>
           ) : loading ? (
-            <div className="disease-combobox-state">Loading disease suggestions...</div>
+            <div className="disease-combobox-state loading">Loading disease suggestions...</div>
           ) : suggestions.length ? (
             suggestions.map((disease, index) => (
               <button
@@ -153,7 +153,7 @@ export default function DiseaseCombobox({
                 type="button"
                 role="option"
                 aria-selected={index === activeIndex}
-                className={index === activeIndex ? "active" : ""}
+                className={`disease-combobox-option ${index === activeIndex ? "active" : ""}`}
                 onMouseEnter={() => setActiveIndex(index)}
                 onClick={() => selectDisease(disease)}
               >
@@ -166,7 +166,7 @@ export default function DiseaseCombobox({
               </button>
             ))
           ) : (
-            <div className="disease-combobox-state">No matching diseases found</div>
+            <div className="disease-combobox-state empty">No matching diseases found</div>
           )}
 
           {query.trim() ? (

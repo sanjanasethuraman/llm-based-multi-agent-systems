@@ -8,6 +8,7 @@ export default function GraphInspector({
   adjacency,
   nodesById,
   selected,
+  nodeTypeColors,
   onFocusNode,
   onHoverLink,
 }) {
@@ -30,6 +31,7 @@ export default function GraphInspector({
           node={node}
           grouped={grouped}
           connectedCount={connectedCount}
+          nodeTypeColors={nodeTypeColors}
           onFocusNode={onFocusNode}
           onHoverLink={onHoverLink}
         />
@@ -43,13 +45,14 @@ export default function GraphInspector({
   );
 }
 
-function NodeDetails({ node, grouped, connectedCount, onFocusNode, onHoverLink }) {
+function NodeDetails({ node, grouped, connectedCount, nodeTypeColors, onFocusNode, onHoverLink }) {
   const relationGroups = groupByRelation([...(grouped?.incoming || []), ...(grouped?.outgoing || [])]);
+  const nodeColor = typeColor(node.type, nodeTypeColors);
   return (
     <div className="primekg-inspector-content">
       <div className="primekg-node-hero">
-        <span className="primekg-type-badge" style={{ borderColor: typeColor(node.type), color: typeColor(node.type) }}>
-          <i style={{ background: typeColor(node.type) }} />
+        <span className="primekg-type-badge" style={{ borderColor: nodeColor, color: nodeColor }}>
+          <i style={{ background: nodeColor }} />
           {node.type || "other"}
         </span>
         <h4>{node.name}</h4>
@@ -177,6 +180,6 @@ function normalizeLinkForDisplay(link, nodesById) {
   };
 }
 
-function typeColor(type) {
-  return PRIMEKG_NODE_TYPE_COLORS[type] || PRIMEKG_NODE_TYPE_COLORS.other;
+function typeColor(type, colors = PRIMEKG_NODE_TYPE_COLORS) {
+  return colors[type] || colors.other || PRIMEKG_NODE_TYPE_COLORS.other;
 }

@@ -82,49 +82,60 @@
 
 :root[data-theme="light"] {
   color-scheme: light;
-  --bg-page: #f8f7f4;
+  --bg-page: #f6f3ec;
   --bg-page-soft: #ffffff;
-  --bg-surface: rgba(255, 255, 255, 0.9);
+  --bg-surface: rgba(255, 255, 255, 0.94);
   --bg-surface-strong: rgba(255, 255, 255, 0.98);
-  --bg-surface-raised: rgba(250, 249, 247, 0.98);
+  --bg-surface-raised: rgba(255, 255, 255, 0.98);
   --bg-control: rgba(255, 255, 255, 0.96);
-  --bg-control-hover: #f2f1ee;
+  --bg-control-hover: #f8f8f6;
   --surface-card: rgba(255, 255, 255, 0.94);
   --surface-elevated: #ffffff;
   --surface-input: #ffffff;
   --surface-button: #ffffff;
-  --surface-button-hover: #f2f1ee;
-  --border-soft: rgba(24, 24, 27, 0.1);
-  --border-medium: rgba(24, 24, 27, 0.16);
-  --border-strong: rgba(24, 24, 27, 0.28);
+  --surface-button-hover: #f8f8f6;
+  --border-soft: rgba(10, 10, 10, 0.1);
+  --border-medium: rgba(10, 10, 10, 0.16);
+  --border-strong: rgba(10, 10, 10, 0.34);
   --text-main: #0a0a0a;
-  --text-soft: #292524;
-  --text-muted: #6b6761;
-  --text-faint: #9a948b;
-  --accent-cyan: #0e7490;
+  --text-soft: #1f1f1f;
+  --text-muted: #3a352e;
+  --text-faint: #6b665f;
+  --accent-cyan: #0a0a0a;
   --accent-blue: #0a0a0a;
-  --accent-violet: #5b4df2;
-  --accent-pink: #b83280;
-  --accent-green: #047857;
+  --accent-violet: #5a5a5a;
+  --accent-pink: #4a4a4a;
+  --accent-green: #176a3a;
   --accent-amber: #a16207;
   --accent-red: #dc2626;
   --accent-primary: #0a0a0a;
-  --accent-primary-strong: #242424;
-  --graph-disease: #e11d48;
-  --graph-drug: #047857;
-  --graph-gene: #0369a1;
-  --graph-protein: #2563eb;
-  --graph-pathway: #6d28d9;
-  --graph-phenotype: #b45309;
-  --graph-process: #0f766e;
-  --graph-other: #64748b;
-  --shadow-soft: 0 10px 24px rgba(24, 24, 27, 0.07);
-  --shadow-card: 0 18px 42px rgba(24, 24, 27, 0.1);
-  --shadow-elevated: 0 28px 72px rgba(24, 24, 27, 0.14);
-  --shadow-button: 0 14px 28px rgba(24, 24, 27, 0.12);
-  --glow-cyan: 0 0 0 1px rgba(24, 24, 27, 0.06), 0 18px 38px rgba(24, 24, 27, 0.08);
-  --glow-violet: 0 16px 34px rgba(91, 77, 242, 0.14);
-  --glow-success: 0 14px 28px rgba(4, 120, 87, 0.12);
+  --accent-primary-strong: #171717;
+  --graph-disease: #d92d20;
+  --graph-drug: #176a3a;
+  --graph-gene: #155e63;
+  --graph-protein: #1f4f66;
+  --graph-pathway: #6f5f3f;
+  --graph-phenotype: #8a5a00;
+  --graph-process: #3f6f63;
+  --graph-other: #5f6368;
+  --shadow-soft: 0 1px 0 rgba(255, 255, 255, 0.78), 2px 2px 0 rgba(10, 10, 10, 0.06), 0 12px 28px rgba(10, 10, 10, 0.05);
+  --shadow-card: 0 1px 0 rgba(255, 255, 255, 0.82), 2px 2px 0 rgba(10, 10, 10, 0.1), 0 16px 34px rgba(10, 10, 10, 0.07);
+  --shadow-elevated: 0 1px 0 rgba(255, 255, 255, 0.9), 3px 3px 0 rgba(10, 10, 10, 0.14), 0 24px 56px rgba(10, 10, 10, 0.09);
+  --shadow-button: 2px 2px 0 #0a0a0a, 0 8px 18px rgba(10, 10, 10, 0.08);
+  --glow-cyan: var(--shadow-card);
+  --glow-violet: var(--shadow-card);
+  --glow-success: 2px 2px 0 rgba(23, 106, 58, 0.18), 0 12px 28px rgba(23, 106, 58, 0.08);
+  --primekg-light-bg: #f6f3ec;
+  --primekg-light-surface: #ffffff;
+  --primekg-light-surface-soft: #f8f8f6;
+  --primekg-light-ink: #080808;
+  --primekg-light-muted: #3a352e;
+  --primekg-light-line: rgba(10, 10, 10, 0.12);
+  --primekg-light-shadow: var(--shadow-card);
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 10px;
+  --radius-xl: 14px;
   --bg: var(--bg-page);
   --panel: var(--bg-surface);
   --ink: var(--text-main);
@@ -159,11 +170,9 @@ body {
 }
 
 :root[data-theme="light"] body {
-  background:
-    radial-gradient(circle at 16% -10%, rgba(17, 24, 39, 0.08), transparent 34rem),
-    radial-gradient(circle at 84% 2%, rgba(109, 93, 252, 0.1), transparent 28rem),
-    radial-gradient(circle at 54% 106%, rgba(8, 145, 178, 0.08), transparent 30rem),
-    linear-gradient(135deg, #f7f8fb 0%, #ffffff 48%, #f1f5f9 100%);
+  background: var(--bg-page);
+  color: var(--text-main);
+  font-family: "Instrument Sans", Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
 
 body::before {
@@ -181,9 +190,9 @@ body::before {
 
 :root[data-theme="light"] body::before {
   background-image:
-    linear-gradient(rgba(15, 23, 42, 0.035) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(15, 23, 42, 0.035) 1px, transparent 1px);
-  mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 0.42), transparent 78%);
+    linear-gradient(rgba(10, 10, 10, 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(10, 10, 10, 0.035) 1px, transparent 1px);
+  mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 0.28), transparent 76%);
 }
 
 #root {
@@ -593,6 +602,7 @@ pre {
 .theme-toggle:focus-visible {
   outline: 2px solid var(--accent-cyan);
   outline-offset: 3px;
+  box-shadow: 0 0 0 4px rgba(73, 214, 255, 0.14), var(--shadow-button);
 }
 
 .theme-toggle__track {
@@ -622,10 +632,14 @@ pre {
     color var(--transition-base);
 }
 
-:root[data-theme="light"] .theme-toggle {
-  background: rgba(255, 255, 255, 0.82);
-  color: var(--text-soft);
-  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
+.theme-toggle[data-theme-state="light"] .theme-toggle__thumb,
+.theme-toggle[aria-pressed="true"] .theme-toggle__thumb {
+  transform: translateX(12px);
+}
+
+.theme-toggle__label {
+  min-width: 34px;
+  text-align: left;
 }
 
 :root[data-theme="light"] .theme-toggle__track {
@@ -635,7 +649,6 @@ pre {
 :root[data-theme="light"] .theme-toggle__thumb {
   color: #ffffff;
   background: linear-gradient(135deg, #111827, #334155);
-  transform: translateX(12px);
 }
 
 .hero-example-select {
@@ -5304,11 +5317,7 @@ pre {
 }
 
 :root[data-theme="light"] body {
-  background:
-    radial-gradient(circle at 16% -12%, rgba(10, 10, 10, 0.055), transparent 32rem),
-    radial-gradient(circle at 88% 2%, rgba(91, 77, 242, 0.09), transparent 28rem),
-    radial-gradient(circle at 48% 110%, rgba(14, 116, 144, 0.075), transparent 34rem),
-    linear-gradient(135deg, #f8f7f4 0%, #ffffff 48%, #f2f1ee 100%);
+  background: var(--bg-page);
 }
 
 :root[data-theme="light"] ::selection {
@@ -5347,12 +5356,21 @@ pre {
   box-shadow: 0 0 0 4px rgba(10, 10, 10, 0.075), 0 10px 24px rgba(24, 24, 27, 0.06);
 }
 
+:root[data-theme="light"] button:focus-visible,
+:root[data-theme="light"] a:focus-visible,
+:root[data-theme="light"] summary:focus-visible {
+  border-color: rgba(10, 10, 10, 0.42);
+  box-shadow: 0 0 0 4px rgba(10, 10, 10, 0.1), 0 10px 24px rgba(24, 24, 27, 0.08);
+  outline: 2px solid rgba(10, 10, 10, 0.62);
+  outline-offset: 3px;
+}
+
 :root[data-theme="light"] .action-button--primary,
 :root[data-theme="light"] button.primary {
   border-color: #0a0a0a;
-  background: linear-gradient(135deg, #0a0a0a, #262626);
+  background: #0a0a0a;
   color: #ffffff;
-  box-shadow: 0 18px 34px rgba(24, 24, 27, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.18);
+  box-shadow: var(--shadow-button);
 }
 
 :root[data-theme="light"] .action-button--secondary {
@@ -5405,17 +5423,15 @@ pre {
 :root[data-theme="light"] .comparison-panel,
 :root[data-theme="light"] .code-panel {
   border-color: var(--border-soft);
-  background:
-    linear-gradient(145deg, rgba(255, 255, 255, 0.96), rgba(250, 249, 247, 0.78)),
-    var(--surface-card);
+  background: var(--surface-card);
   color: var(--text-soft);
   box-shadow: var(--shadow-card);
 }
 
 :root[data-theme="light"] .hero-dashboard::before {
   background:
-    radial-gradient(circle at 16% 12%, rgba(10, 10, 10, 0.07), transparent 24rem),
-    radial-gradient(circle at 82% 18%, rgba(91, 77, 242, 0.09), transparent 22rem);
+    radial-gradient(circle at 16% 12%, rgba(10, 10, 10, 0.055), transparent 24rem),
+    radial-gradient(circle at 82% 18%, rgba(10, 10, 10, 0.035), transparent 22rem);
 }
 
 :root[data-theme="light"] .hero-kicker,
@@ -5467,10 +5483,7 @@ pre {
 }
 
 :root[data-theme="light"] .app-shell {
-  background:
-    radial-gradient(circle at 18% -8%, rgba(10, 10, 10, 0.055), transparent 34rem),
-    radial-gradient(circle at 88% 4%, rgba(91, 77, 242, 0.075), transparent 30rem),
-    radial-gradient(circle at 52% 112%, rgba(14, 116, 144, 0.055), transparent 34rem);
+  background: var(--bg-page);
 }
 
 :root[data-theme="light"] .product-nav {
@@ -5478,9 +5491,9 @@ pre {
   top: 16px;
   z-index: var(--z-sticky);
   border-color: rgba(24, 24, 27, 0.1);
-  background: rgba(255, 255, 255, 0.82);
-  box-shadow: 0 18px 48px rgba(24, 24, 27, 0.08);
-  backdrop-filter: blur(22px);
+  background: rgba(246, 243, 236, 0.94);
+  box-shadow: var(--shadow-soft);
+  backdrop-filter: blur(16px);
 }
 
 :root[data-theme="light"] .product-brand__mark {
@@ -5498,20 +5511,26 @@ pre {
 }
 
 :root[data-theme="light"] .product-brand span {
-  color: #78716c;
+  color: var(--text-muted);
   font-weight: 650;
 }
 
 :root[data-theme="light"] .hero-example-select {
   border-color: rgba(24, 24, 27, 0.12);
   background: #ffffff;
-  color: #292524;
+  color: var(--text-soft);
 }
 
 :root[data-theme="light"] .theme-toggle {
   border-color: rgba(24, 24, 27, 0.12);
-  background: #f8f7f4;
-  color: #292524;
+  background: #ffffff;
+  color: var(--text-soft);
+}
+
+:root[data-theme="light"] .theme-toggle[aria-pressed="true"] {
+  border-color: rgba(24, 24, 27, 0.24);
+  background: #ffffff;
+  color: #0a0a0a;
 }
 
 :root[data-theme="light"] .theme-toggle:hover:not(:disabled) {
@@ -5519,14 +5538,17 @@ pre {
   background: #ffffff;
 }
 
+:root[data-theme="light"] .theme-toggle:focus-visible {
+  box-shadow: 0 0 0 4px rgba(10, 10, 10, 0.1), 0 12px 28px rgba(24, 24, 27, 0.1);
+}
+
 :root[data-theme="light"] .hero-dashboard {
   min-height: clamp(360px, 40vw, 520px);
   border-color: rgba(24, 24, 27, 0.1);
   background:
-    radial-gradient(circle at 12% 14%, rgba(10, 10, 10, 0.05), transparent 26rem),
-    radial-gradient(circle at 78% 12%, rgba(91, 77, 242, 0.08), transparent 24rem),
-    linear-gradient(145deg, rgba(255, 255, 255, 0.98), rgba(248, 247, 244, 0.88));
-  box-shadow: 0 28px 80px rgba(24, 24, 27, 0.11);
+    radial-gradient(circle at 12% 14%, rgba(10, 10, 10, 0.045), transparent 26rem),
+    linear-gradient(180deg, #ffffff 0%, #fbfbfa 100%);
+  box-shadow: var(--shadow-elevated);
 }
 
 :root[data-theme="light"] .hero-dashboard::before {
@@ -5534,8 +5556,8 @@ pre {
   width: 620px;
   height: 620px;
   background:
-    radial-gradient(circle, rgba(10, 10, 10, 0.055), transparent 58%),
-    radial-gradient(circle at 70% 30%, rgba(91, 77, 242, 0.1), transparent 46%);
+    radial-gradient(circle, rgba(10, 10, 10, 0.05), transparent 58%),
+    radial-gradient(circle at 70% 30%, rgba(10, 10, 10, 0.035), transparent 46%);
   filter: blur(2px);
 }
 
@@ -5548,14 +5570,15 @@ pre {
 
 :root[data-theme="light"] .hero-dashboard h1 {
   color: #0a0a0a;
-  letter-spacing: -0.02em;
+  font-weight: 900;
+  letter-spacing: 0;
   text-wrap: balance;
 }
 
 :root[data-theme="light"] .hero-dashboard p {
   max-width: 680px;
-  color: #57534e;
-  font-weight: 520;
+  color: var(--text-muted);
+  font-weight: 600;
 }
 
 :root[data-theme="light"] .hero-chip {
@@ -5671,12 +5694,11 @@ pre {
 :root[data-theme="light"] .canvas {
   border-color: rgba(24, 24, 27, 0.12);
   background:
-    radial-gradient(circle at 20% 10%, rgba(91, 77, 242, 0.055), transparent 24rem),
-    linear-gradient(rgba(24, 24, 27, 0.042) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(24, 24, 27, 0.042) 1px, transparent 1px),
-    #fbfaf8;
-  background-size: auto, 24px 24px, 24px 24px, auto;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.76);
+    linear-gradient(rgba(10, 10, 10, 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(10, 10, 10, 0.035) 1px, transparent 1px),
+    #ffffff;
+  background-size: 24px 24px, 24px 24px, auto;
+  box-shadow: inset 0 0 0 1px rgba(10, 10, 10, 0.04);
 }
 
 :root[data-theme="light"] .canvas .react-flow {
@@ -5698,15 +5720,14 @@ pre {
 
 :root[data-theme="light"] .workflow-node {
   border-color: rgba(24, 24, 27, 0.12);
-  background:
-    linear-gradient(145deg, rgba(255, 255, 255, 0.98), rgba(246, 245, 242, 0.9));
+  background: #ffffff;
   color: var(--text-soft);
-  box-shadow: 0 14px 30px rgba(24, 24, 27, 0.1);
+  box-shadow: var(--shadow-soft);
 }
 
 :root[data-theme="light"] .workflow-node.selected {
-  border-color: rgba(10, 10, 10, 0.44);
-  box-shadow: 0 0 0 4px rgba(10, 10, 10, 0.07), 0 20px 42px rgba(24, 24, 27, 0.14);
+  border-color: #0a0a0a;
+  box-shadow: 0 0 0 3px rgba(10, 10, 10, 0.08), var(--shadow-card);
 }
 
 :root[data-theme="light"] .react-flow__edge-textbg {
@@ -5732,9 +5753,7 @@ pre {
 :root[data-theme="light"] .primekg-inspector,
 :root[data-theme="light"] .primekg-path-panel {
   border-color: var(--border-soft);
-  background:
-    linear-gradient(145deg, rgba(255, 255, 255, 0.96), rgba(250, 249, 247, 0.82)),
-    var(--surface-card);
+  background: var(--surface-card);
   color: var(--text-soft);
   box-shadow: var(--shadow-soft);
 }
@@ -5744,9 +5763,10 @@ pre {
 :root[data-theme="light"] .primekg-force-shell {
   border-color: rgba(24, 24, 27, 0.14);
   background:
-    radial-gradient(circle at 22% 12%, rgba(91, 77, 242, 0.08), transparent 28rem),
-    radial-gradient(circle at 82% 16%, rgba(14, 116, 144, 0.08), transparent 24rem),
-    linear-gradient(135deg, #ffffff 0%, #f7f6f2 52%, #eeeeea 100%);
+    linear-gradient(rgba(10, 10, 10, 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(10, 10, 10, 0.035) 1px, transparent 1px),
+    #ffffff;
+  background-size: 36px 36px, 36px 36px, auto;
   color: var(--text-soft);
   box-shadow: var(--shadow-card);
 }
@@ -5823,7 +5843,7 @@ pre {
 :root[data-theme="light"] .post-kg-console {
   background:
     radial-gradient(circle at 10% 0%, rgba(24, 24, 27, 0.045), transparent 26rem),
-    radial-gradient(circle at 92% 10%, rgba(91, 77, 242, 0.075), transparent 28rem),
+    radial-gradient(circle at 92% 10%, rgba(10, 10, 10, 0.035), transparent 28rem),
     linear-gradient(145deg, rgba(255, 255, 255, 0.96), rgba(248, 247, 244, 0.86));
 }
 
@@ -6046,9 +6066,10 @@ pre {
 :root[data-theme="light"] button:disabled,
 :root[data-theme="light"] .action-button:disabled {
   background: #f5f4f1;
-  color: #a8a29e;
-  border-color: rgba(24, 24, 27, 0.08);
-  opacity: 0.72;
+  color: #78716c;
+  border-color: rgba(24, 24, 27, 0.12);
+  opacity: 0.86;
+  cursor: not-allowed;
 }
 
 :root[data-theme="light"] .action-button[aria-busy="true"]::after {
@@ -6165,7 +6186,7 @@ pre {
 
 :root[data-theme="light"] .workspace {
   background:
-    radial-gradient(circle at 18% 10%, rgba(91, 77, 242, 0.045), transparent 26rem),
+    radial-gradient(circle at 18% 10%, rgba(10, 10, 10, 0.035), transparent 26rem),
     linear-gradient(145deg, rgba(255, 255, 255, 0.96), rgba(250, 249, 247, 0.82));
 }
 
@@ -6214,12 +6235,10 @@ pre {
 
 :root[data-theme="light"] .canvas {
   background:
-    radial-gradient(circle at 22% 8%, rgba(91, 77, 242, 0.055), transparent 26rem),
-    radial-gradient(circle at 82% 18%, rgba(14, 116, 144, 0.045), transparent 24rem),
-    linear-gradient(rgba(24, 24, 27, 0.045) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(24, 24, 27, 0.045) 1px, transparent 1px),
-    #f7f6f2;
-  background-size: auto, auto, 28px 28px, 28px 28px, auto;
+    linear-gradient(rgba(10, 10, 10, 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(10, 10, 10, 0.035) 1px, transparent 1px),
+    #ffffff;
+  background-size: 28px 28px, 28px 28px, auto;
 }
 
 :root[data-theme="light"] .canvas::before {
@@ -6307,7 +6326,7 @@ pre {
 }
 
 :root[data-theme="light"] .workflow-node.agent {
-  --node-accent: #0e7490;
+  --node-accent: #4f5458;
 }
 
 :root[data-theme="light"] .workflow-node.retriever {
@@ -6315,7 +6334,7 @@ pre {
 }
 
 :root[data-theme="light"] .workflow-node.vector_db {
-  --node-accent: #6d28d9;
+  --node-accent: #6f5f3f;
 }
 
 :root[data-theme="light"] .workflow-node.tool {
@@ -6323,15 +6342,15 @@ pre {
 }
 
 :root[data-theme="light"] .workflow-node.mcp_tool {
-  --node-accent: #1d4ed8;
+  --node-accent: #4f5458;
 }
 
 :root[data-theme="light"] .workflow-node.output {
-  --node-accent: #be185d;
+  --node-accent: #7a4f2b;
 }
 
 :root[data-theme="light"] .workflow-node.sub_agent {
-  --node-accent: #0369a1;
+  --node-accent: #155e63;
 }
 
 :root[data-theme="light"] .workflow-node:hover {
@@ -6347,9 +6366,9 @@ pre {
 }
 
 :root[data-theme="light"] .workflow-node.running {
-  border-color: #0e7490;
+  border-color: #0a0a0a;
   box-shadow:
-    0 0 0 4px rgba(14, 116, 144, 0.11),
+    0 0 0 4px rgba(10, 10, 10, 0.08),
     0 22px 46px rgba(24, 24, 27, 0.15);
 }
 
@@ -6413,9 +6432,9 @@ pre {
 }
 
 :root[data-theme="light"] .workflow-node .status-badge.running {
-  border-color: rgba(14, 116, 144, 0.22);
-  background: rgba(236, 254, 255, 0.9);
-  color: #0e7490;
+  border-color: rgba(10, 10, 10, 0.22);
+  background: #ffffff;
+  color: #0a0a0a;
 }
 
 :root[data-theme="light"] .workflow-node .status-badge.completed,
@@ -6463,7 +6482,7 @@ pre {
 }
 
 :root[data-theme="light"] .flow-edge.running path {
-  stroke: #0e7490;
+  stroke: #0a0a0a;
   stroke-width: 2.8;
 }
 
@@ -6501,18 +6520,18 @@ pre {
 }
 
 :root[data-theme="light"] .inspector-icon {
-  border-color: rgba(14, 116, 144, 0.16);
-  background: rgba(236, 254, 255, 0.78);
-  color: #0e7490;
+  border-color: rgba(10, 10, 10, 0.16);
+  background: #f8f8f6;
+  color: #4f5458;
   box-shadow: 0 10px 22px rgba(24, 24, 27, 0.055);
 }
 
-:root[data-theme="light"] .inspector-icon.agent { color: #0e7490; }
-:root[data-theme="light"] .inspector-icon.retriever { color: #047857; }
-:root[data-theme="light"] .inspector-icon.vector_db { color: #6d28d9; }
-:root[data-theme="light"] .inspector-icon.tool { color: #a16207; }
-:root[data-theme="light"] .inspector-icon.mcp_tool { color: #1d4ed8; }
-:root[data-theme="light"] .inspector-icon.output { color: #be185d; }
+:root[data-theme="light"] .inspector-icon.agent { color: #4f5458; }
+:root[data-theme="light"] .inspector-icon.retriever { color: #176a3a; }
+:root[data-theme="light"] .inspector-icon.vector_db { color: #6f5f3f; }
+:root[data-theme="light"] .inspector-icon.tool { color: #8a5a00; }
+:root[data-theme="light"] .inspector-icon.mcp_tool { color: #5f6368; }
+:root[data-theme="light"] .inspector-icon.output { color: #7a4f2b; }
 :root[data-theme="light"] .inspector-icon.muted { color: #78716c; }
 
 :root[data-theme="light"] .inspector-header > div:last-child > span,
@@ -6798,8 +6817,8 @@ pre {
 }
 
 :root[data-theme="light"] .graph-answer-path-card.visible {
-  border-color: rgba(14, 116, 144, 0.24);
-  box-shadow: 0 10px 24px rgba(14, 116, 144, 0.08);
+  border-color: rgba(10, 10, 10, 0.24);
+  box-shadow: 0 10px 24px rgba(10, 10, 10, 0.08);
 }
 
 :root[data-theme="light"] .graph-answer-path-topline strong {
@@ -6848,6 +6867,1188 @@ pre {
 :root[data-theme="light"] .mcp-call-card code {
   background: #f5f4f1;
   color: #1c1917;
+}
+
+:root[data-theme="light"] .primekg-panel {
+  gap: 22px;
+  padding: clamp(20px, 2vw, 30px);
+  border-color: rgba(24, 24, 27, 0.1);
+  background:
+    radial-gradient(circle at 12% -6%, rgba(10, 10, 10, 0.055), transparent 28rem),
+    radial-gradient(circle at 92% 2%, rgba(10, 10, 10, 0.035), transparent 28rem),
+    linear-gradient(180deg, #ffffff 0%, var(--primekg-light-bg) 100%);
+  box-shadow: 0 28px 80px rgba(24, 24, 27, 0.1);
+}
+
+:root[data-theme="light"] .primekg-hero {
+  align-items: stretch;
+  padding: clamp(22px, 2.4vw, 34px);
+  border-color: rgba(24, 24, 27, 0.1);
+  background:
+    radial-gradient(circle at 8% 8%, rgba(10, 10, 10, 0.055), transparent 24rem),
+    linear-gradient(145deg, #ffffff, #f7f6f2);
+  box-shadow: var(--primekg-light-shadow), inset 0 1px 0 rgba(255, 255, 255, 0.88);
+}
+
+:root[data-theme="light"] .primekg-hero-copy {
+  align-content: center;
+  max-width: 820px;
+}
+
+:root[data-theme="light"] .primekg-hero-copy > span,
+:root[data-theme="light"] .primekg-control-heading span,
+:root[data-theme="light"] .primekg-preview-heading span,
+:root[data-theme="light"] .primekg-graph-heading span {
+  width: fit-content;
+  padding: 6px 10px;
+  border: 1px solid rgba(24, 24, 27, 0.1);
+  border-radius: var(--radius-pill);
+  background: #ffffff;
+  color: var(--primekg-light-ink);
+  box-shadow: 0 8px 18px rgba(24, 24, 27, 0.04);
+}
+
+:root[data-theme="light"] .primekg-hero h2 {
+  color: var(--primekg-light-ink);
+  font-size: clamp(34px, 4vw, 56px);
+  font-weight: 920;
+  letter-spacing: 0;
+}
+
+:root[data-theme="light"] .primekg-hero p,
+:root[data-theme="light"] .primekg-graph-heading p,
+:root[data-theme="light"] .primekg-disease-field p {
+  color: var(--primekg-light-muted);
+}
+
+:root[data-theme="light"] .primekg-mode-helper {
+  max-width: 680px;
+}
+
+:root[data-theme="light"] .primekg-hero-actions {
+  align-content: flex-start;
+  align-self: flex-start;
+  padding: 8px;
+  border: 1px solid rgba(24, 24, 27, 0.08);
+  border-radius: var(--radius-lg);
+  background: rgba(255, 255, 255, 0.78);
+  box-shadow: 0 14px 34px rgba(24, 24, 27, 0.06);
+}
+
+:root[data-theme="light"] .primekg-hero-actions .action-button--primary,
+:root[data-theme="light"] .primekg-actions .action-button--primary {
+  border-color: #080808;
+  background: linear-gradient(135deg, #080808, #292929);
+  color: #ffffff;
+  box-shadow: 0 18px 34px rgba(24, 24, 27, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.18);
+}
+
+:root[data-theme="light"] .primekg-actions .action-button--secondary,
+:root[data-theme="light"] .primekg-hero-actions .action-button--secondary {
+  border-color: rgba(24, 24, 27, 0.12);
+  background: #ffffff;
+  color: #292524;
+}
+
+:root[data-theme="light"] .primekg-actions .action-button--warning {
+  border-color: rgba(161, 98, 7, 0.2);
+  background: #fffbeb;
+  color: #854d0e;
+}
+
+:root[data-theme="light"] .primekg-status-grid {
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+}
+
+:root[data-theme="light"] .primekg-status-card {
+  min-height: 104px;
+  padding: 13px;
+  border-color: rgba(24, 24, 27, 0.1);
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.98), rgba(247, 246, 242, 0.88));
+  color: #57534e;
+  box-shadow: 0 12px 28px rgba(24, 24, 27, 0.06);
+}
+
+:root[data-theme="light"] .primekg-status-card.ready {
+  border-color: rgba(4, 120, 87, 0.18);
+  background:
+    radial-gradient(circle at 100% 0%, rgba(4, 120, 87, 0.08), transparent 46%),
+    #ffffff;
+}
+
+:root[data-theme="light"] .primekg-status-card-icon {
+  border-color: rgba(24, 24, 27, 0.08);
+  background: #f5f4f1;
+  color: #57534e;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.86);
+}
+
+:root[data-theme="light"] .primekg-status-card strong {
+  color: #0a0a0a;
+  font-weight: 850;
+}
+
+:root[data-theme="light"] .primekg-status-card span {
+  color: #78716c;
+  font-weight: 560;
+}
+
+:root[data-theme="light"] .primekg-status-note {
+  padding: 13px 14px;
+  border-radius: var(--radius-md);
+  background: #ffffff;
+  box-shadow: 0 10px 22px rgba(24, 24, 27, 0.045);
+}
+
+:root[data-theme="light"] .primekg-workflow-steps {
+  gap: 10px;
+}
+
+:root[data-theme="light"] .primekg-workflow-steps div {
+  position: relative;
+  gap: 5px;
+  padding: 13px;
+  border-color: rgba(24, 24, 27, 0.1);
+  background: rgba(255, 255, 255, 0.78);
+  box-shadow: 0 10px 22px rgba(24, 24, 27, 0.045);
+}
+
+:root[data-theme="light"] .primekg-workflow-steps div.done {
+  border-color: rgba(4, 120, 87, 0.2);
+  background: #ffffff;
+}
+
+:root[data-theme="light"] .primekg-workflow-steps span {
+  background: #0a0a0a;
+  color: #ffffff;
+  box-shadow: 0 8px 16px rgba(24, 24, 27, 0.14);
+}
+
+:root[data-theme="light"] .primekg-workflow-steps div.done span {
+  background: #047857;
+}
+
+:root[data-theme="light"] .primekg-workflow-steps strong {
+  color: #0a0a0a;
+}
+
+:root[data-theme="light"] .primekg-workflow-steps small {
+  color: #78716c;
+}
+
+:root[data-theme="light"] .primekg-control-surface,
+:root[data-theme="light"] .primekg-preview,
+:root[data-theme="light"] .primekg-graph-stage {
+  border-color: rgba(24, 24, 27, 0.1);
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.98), rgba(247, 246, 242, 0.86));
+  box-shadow: var(--primekg-light-shadow);
+}
+
+:root[data-theme="light"] .primekg-control-heading strong,
+:root[data-theme="light"] .primekg-preview-heading h3,
+:root[data-theme="light"] .primekg-graph-heading h3,
+:root[data-theme="light"] .primekg-stat-list h3,
+:root[data-theme="light"] .primekg-samples h3 {
+  color: #0a0a0a;
+  font-weight: 850;
+}
+
+:root[data-theme="light"] .primekg-grid label,
+:root[data-theme="light"] .primekg-depth-control,
+:root[data-theme="light"] .primekg-disease-field,
+:root[data-theme="light"] .disease-combobox {
+  color: #57534e;
+}
+
+:root[data-theme="light"] .disease-combobox-control,
+:root[data-theme="light"] .primekg-grid > label:not(.disease-combobox) input,
+:root[data-theme="light"] .primekg-grid > label:not(.disease-combobox) select {
+  min-height: 44px;
+  border-color: rgba(24, 24, 27, 0.13);
+  background: #ffffff;
+  color: #0a0a0a;
+  box-shadow: 0 8px 18px rgba(24, 24, 27, 0.04);
+}
+
+:root[data-theme="light"] .disease-combobox-control.open,
+:root[data-theme="light"] .disease-combobox-control:focus-within {
+  border-color: rgba(10, 10, 10, 0.42);
+  box-shadow: 0 0 0 4px rgba(10, 10, 10, 0.075), 0 14px 30px rgba(24, 24, 27, 0.08);
+}
+
+:root[data-theme="light"] .disease-combobox-control input {
+  color: #0a0a0a;
+}
+
+:root[data-theme="light"] .disease-combobox-control button {
+  background: #f5f4f1;
+  color: #57534e;
+  box-shadow: none;
+}
+
+:root[data-theme="light"] .disease-combobox-menu {
+  padding: 10px;
+  border-color: rgba(24, 24, 27, 0.12);
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.98);
+  box-shadow: 0 28px 72px rgba(24, 24, 27, 0.16);
+  color: #292524;
+}
+
+:root[data-theme="light"] .disease-combobox-option,
+:root[data-theme="light"] .disease-combobox-menu > button:not(.disease-use-typed) {
+  border-color: rgba(24, 24, 27, 0.09);
+  background: #ffffff;
+  color: #292524;
+  box-shadow: 0 6px 14px rgba(24, 24, 27, 0.035);
+}
+
+:root[data-theme="light"] .disease-combobox-option.active,
+:root[data-theme="light"] .disease-combobox-option:hover,
+:root[data-theme="light"] .disease-combobox-menu > button.active,
+:root[data-theme="light"] .disease-combobox-menu > button:not(.disease-use-typed):hover {
+  border-color: rgba(10, 10, 10, 0.22);
+  background: #f5f4f1;
+  color: #0a0a0a;
+}
+
+:root[data-theme="light"] .disease-combobox-menu strong {
+  color: #0a0a0a;
+}
+
+:root[data-theme="light"] .disease-combobox-menu span {
+  color: #78716c;
+}
+
+:root[data-theme="light"] .disease-combobox-menu em {
+  border-color: rgba(24, 24, 27, 0.1);
+  background: #f5f4f1;
+  color: #57534e;
+}
+
+:root[data-theme="light"] .disease-combobox-state,
+:root[data-theme="light"] .disease-combobox-hint,
+:root[data-theme="light"] .disease-use-typed {
+  border-color: rgba(24, 24, 27, 0.1);
+  background: #f7f6f2;
+  color: #57534e;
+}
+
+:root[data-theme="light"] .disease-combobox-state.empty {
+  color: #78716c;
+}
+
+:root[data-theme="light"] .disease-combobox-state.warning {
+  border-color: rgba(161, 98, 7, 0.24);
+  background: #fffbeb;
+  color: #92400e;
+}
+
+:root[data-theme="light"] .disease-use-typed:hover {
+  border-color: rgba(10, 10, 10, 0.2);
+  background: #ffffff;
+  color: #0a0a0a;
+}
+
+:root[data-theme="light"] .primekg-ask-hint {
+  border-color: rgba(24, 24, 27, 0.1);
+  background: #ffffff;
+  color: #57534e;
+  box-shadow: 0 8px 18px rgba(24, 24, 27, 0.04);
+}
+
+:root[data-theme="light"] .primekg-ask-hint.hinted {
+  border-color: rgba(10, 10, 10, 0.18);
+  background: #ffffff;
+  color: #0a0a0a;
+}
+
+:root[data-theme="light"] .primekg-ask-hint.auto {
+  border-color: rgba(4, 120, 87, 0.18);
+  background: #ecfdf5;
+  color: #047857;
+}
+
+:root[data-theme="light"] .primekg-depth-segments {
+  padding: 4px;
+  border: 1px solid rgba(24, 24, 27, 0.09);
+  border-radius: var(--radius-md);
+  background: #f5f4f1;
+}
+
+:root[data-theme="light"] .primekg-depth-segments button {
+  min-height: 54px;
+  border-color: transparent;
+  background: transparent;
+  color: #6b6761;
+  box-shadow: none;
+}
+
+:root[data-theme="light"] .primekg-depth-segments button.active {
+  border-color: #0a0a0a;
+  background: #0a0a0a;
+  color: #ffffff;
+  box-shadow: 0 12px 24px rgba(24, 24, 27, 0.14);
+}
+
+:root[data-theme="light"] .primekg-depth-segments button.active small {
+  color: rgba(255, 255, 255, 0.72);
+}
+
+:root[data-theme="light"] .primekg-preview .stat-card {
+  background: #ffffff;
+}
+
+:root[data-theme="light"] .primekg-preview-heading small {
+  align-self: center;
+  padding: 7px 10px;
+  border: 1px solid rgba(24, 24, 27, 0.1);
+  border-radius: var(--radius-pill);
+  background: #ffffff;
+  color: #57534e;
+}
+
+:root[data-theme="light"] .primekg-stat-list,
+:root[data-theme="light"] .primekg-samples {
+  border-color: rgba(24, 24, 27, 0.1);
+  background: #ffffff;
+  box-shadow: 0 12px 28px rgba(24, 24, 27, 0.055);
+}
+
+:root[data-theme="light"] .primekg-stat-list div {
+  padding: 7px 9px;
+  border: 1px solid rgba(24, 24, 27, 0.09);
+  border-radius: var(--radius-pill);
+  background: #f7f6f2;
+  color: #292524;
+}
+
+:root[data-theme="light"] .primekg-stat-list div strong {
+  color: #0a0a0a;
+}
+
+:root[data-theme="light"] .primekg-sample-card {
+  min-height: 48px;
+  border-color: rgba(24, 24, 27, 0.1);
+  background: #ffffff;
+  color: #292524;
+  box-shadow: 0 8px 18px rgba(24, 24, 27, 0.04);
+}
+
+:root[data-theme="light"] .primekg-sample-card span {
+  background: #0a0a0a;
+  color: #ffffff;
+}
+
+:root[data-theme="light"] .primekg-empty-state {
+  border-color: rgba(161, 98, 7, 0.22);
+  background: #fffbeb;
+  color: #92400e;
+}
+
+:root[data-theme="light"] .primekg-empty-state strong {
+  color: #0a0a0a;
+}
+
+:root[data-theme="light"] .primekg-graph-stage {
+  padding: clamp(16px, 1.8vw, 24px);
+}
+
+:root[data-theme="light"] .primekg-explorer,
+:root[data-theme="light"] .primekg-explorer-state {
+  border-color: rgba(24, 24, 27, 0.1);
+  background:
+    radial-gradient(circle at 16% 8%, rgba(10, 10, 10, 0.045), transparent 28rem),
+    radial-gradient(circle at 86% 18%, rgba(10, 10, 10, 0.032), transparent 26rem),
+    linear-gradient(145deg, #ffffff, #f5f4f1);
+  box-shadow: 0 24px 64px rgba(24, 24, 27, 0.12);
+}
+
+:root[data-theme="light"] .primekg-explorer-topbar h3,
+:root[data-theme="light"] .primekg-explorer-state strong {
+  color: #0a0a0a;
+}
+
+:root[data-theme="light"] .primekg-explorer-topbar p,
+:root[data-theme="light"] .primekg-explorer-state span {
+  color: #6b6761;
+}
+
+:root[data-theme="light"] .primekg-stats-bar div,
+:root[data-theme="light"] .primekg-toolbar,
+:root[data-theme="light"] .primekg-focus-panel,
+:root[data-theme="light"] .primekg-legend-panel,
+:root[data-theme="light"] .primekg-inspector,
+:root[data-theme="light"] .primekg-path-panel {
+  border-color: rgba(24, 24, 27, 0.1);
+  background: rgba(255, 255, 255, 0.88);
+  box-shadow: 0 12px 28px rgba(24, 24, 27, 0.055);
+}
+
+:root[data-theme="light"] .primekg-stats-bar svg,
+:root[data-theme="light"] .primekg-search svg,
+:root[data-theme="light"] .primekg-focus-story svg,
+:root[data-theme="light"] .primekg-path-panel > div:first-child svg {
+  color: #0a0a0a;
+}
+
+:root[data-theme="light"] .primekg-stats-bar span,
+:root[data-theme="light"] .primekg-focus-heading span,
+:root[data-theme="light"] .primekg-demo-script span,
+:root[data-theme="light"] .primekg-filter-group > span,
+:root[data-theme="light"] .primekg-inspector-heading span {
+  color: #78716c;
+}
+
+:root[data-theme="light"] .primekg-stats-bar strong,
+:root[data-theme="light"] .primekg-focus-heading strong,
+:root[data-theme="light"] .primekg-inspector-heading strong,
+:root[data-theme="light"] .primekg-node-hero h4,
+:root[data-theme="light"] .primekg-relationship-group h4,
+:root[data-theme="light"] .primekg-relation-summary h4,
+:root[data-theme="light"] .primekg-path-panel > div:first-child {
+  color: #0a0a0a;
+}
+
+:root[data-theme="light"] .primekg-search {
+  border-color: rgba(24, 24, 27, 0.12);
+  background: #ffffff;
+  color: #57534e;
+  box-shadow: 0 8px 18px rgba(24, 24, 27, 0.04);
+}
+
+:root[data-theme="light"] .primekg-search input {
+  color: #0a0a0a;
+}
+
+:root[data-theme="light"] .primekg-search-results {
+  border-color: rgba(24, 24, 27, 0.12);
+  background: #ffffff;
+  box-shadow: 0 24px 56px rgba(24, 24, 27, 0.15);
+}
+
+:root[data-theme="light"] .primekg-search-results button {
+  border-color: rgba(24, 24, 27, 0.09);
+  background: #ffffff;
+  color: #0a0a0a;
+}
+
+:root[data-theme="light"] .primekg-search-results button:hover {
+  border-color: rgba(10, 10, 10, 0.22);
+  background: #f5f4f1;
+}
+
+:root[data-theme="light"] .primekg-search-results span {
+  color: #78716c;
+}
+
+:root[data-theme="light"] .primekg-segmented {
+  border-color: rgba(24, 24, 27, 0.1);
+  background: #f5f4f1;
+}
+
+:root[data-theme="light"] .primekg-segmented button,
+:root[data-theme="light"] .primekg-quick-filters button,
+:root[data-theme="light"] .primekg-focus-modes button,
+:root[data-theme="light"] .primekg-demo-script button,
+:root[data-theme="light"] .primekg-filter-group button {
+  border-color: rgba(24, 24, 27, 0.1);
+  background: #ffffff;
+  color: #57534e;
+  box-shadow: 0 6px 14px rgba(24, 24, 27, 0.035);
+}
+
+:root[data-theme="light"] .primekg-segmented button.active,
+:root[data-theme="light"] .primekg-quick-filters button.active,
+:root[data-theme="light"] .primekg-focus-modes button.active,
+:root[data-theme="light"] .primekg-demo-script button.active {
+  border-color: #0a0a0a;
+  background: #0a0a0a;
+  color: #ffffff;
+  box-shadow: 0 14px 28px rgba(24, 24, 27, 0.14);
+}
+
+:root[data-theme="light"] .primekg-focus-story,
+:root[data-theme="light"] .primekg-detail-grid div,
+:root[data-theme="light"] .primekg-neighbor-list button,
+:root[data-theme="light"] .primekg-relation-summary div,
+:root[data-theme="light"] .primekg-evidence-path-list button {
+  border-color: rgba(24, 24, 27, 0.09);
+  background: #f7f6f2;
+  color: #292524;
+}
+
+:root[data-theme="light"] .primekg-focus-story p,
+:root[data-theme="light"] .primekg-path-panel p,
+:root[data-theme="light"] .primekg-inspector-heading p,
+:root[data-theme="light"] .primekg-inspector-empty,
+:root[data-theme="light"] .primekg-detail-grid dt,
+:root[data-theme="light"] .primekg-neighbor-list em,
+:root[data-theme="light"] .primekg-evidence-path-list span,
+:root[data-theme="light"] .primekg-evidence-path-list small {
+  color: #6b6761;
+}
+
+:root[data-theme="light"] .primekg-detail-grid dd,
+:root[data-theme="light"] .primekg-neighbor-list strong,
+:root[data-theme="light"] .primekg-evidence-path-list strong {
+  color: #0a0a0a;
+}
+
+:root[data-theme="light"] .primekg-focus-neighborhood,
+:root[data-theme="light"] .primekg-copy-path {
+  border-color: #0a0a0a;
+  background: #0a0a0a;
+  color: #ffffff;
+}
+
+:root[data-theme="light"] .primekg-force-shell {
+  min-height: clamp(660px, 70vh, 820px);
+  border-color: rgba(24, 24, 27, 0.14);
+  border-radius: var(--radius-lg);
+  background:
+    radial-gradient(circle at 50% 42%, rgba(24, 24, 27, 0.075), transparent 34%),
+    radial-gradient(circle at 22% 18%, rgba(10, 10, 10, 0.035), transparent 26rem),
+    linear-gradient(rgba(24, 24, 27, 0.038) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(24, 24, 27, 0.038) 1px, transparent 1px),
+    #f7f6f2;
+  background-size: auto, auto, 36px 36px, 36px 36px, auto;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9), 0 24px 60px rgba(24, 24, 27, 0.12);
+}
+
+:root[data-theme="light"] .primekg-force-shell:hover {
+  border-color: rgba(24, 24, 27, 0.24);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9), 0 28px 70px rgba(24, 24, 27, 0.15);
+}
+
+:root[data-theme="light"] .primekg-force-shell::before {
+  background:
+    radial-gradient(circle at 50% 45%, rgba(10, 10, 10, 0.045), transparent 34%),
+    linear-gradient(rgba(24, 24, 27, 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(24, 24, 27, 0.035) 1px, transparent 1px);
+  background-size: auto, 36px 36px, 36px 36px;
+}
+
+:root[data-theme="light"] .primekg-force-empty {
+  background: rgba(255, 255, 255, 0.88);
+  color: #0a0a0a;
+}
+
+:root[data-theme="light"] .primekg-force-empty span {
+  color: #6b6761;
+}
+
+:root[data-theme="light"] .primekg-zoom-readout {
+  border-color: rgba(24, 24, 27, 0.1);
+  background: rgba(255, 255, 255, 0.9);
+  color: #292524;
+  box-shadow: 0 10px 24px rgba(24, 24, 27, 0.08);
+}
+
+:root[data-theme="light"] .scene-tooltip {
+  border: 1px solid rgba(24, 24, 27, 0.12) !important;
+  border-radius: var(--radius-sm) !important;
+  background: rgba(255, 255, 255, 0.94) !important;
+  color: #0a0a0a !important;
+  box-shadow: 0 14px 34px rgba(24, 24, 27, 0.14) !important;
+}
+
+:root[data-theme="light"] .primekg-inspector-heading {
+  border-bottom-color: rgba(24, 24, 27, 0.09);
+  background: #ffffff;
+}
+
+:root[data-theme="light"] .primekg-type-badge {
+  background: #ffffff;
+  box-shadow: 0 6px 14px rgba(24, 24, 27, 0.035);
+}
+
+:root[data-theme="light"] .primekg-neighbor-list button:hover,
+:root[data-theme="light"] .primekg-evidence-path-list button:hover,
+:root[data-theme="light"] .primekg-evidence-path-list button.active {
+  border-color: rgba(10, 10, 10, 0.22);
+  background: #ffffff;
+}
+
+:root[data-theme="light"] .primekg-neighbor-list span {
+  background: #0a0a0a;
+  color: #ffffff;
+}
+
+:root[data-theme="light"] .primekg-raw-details {
+  border-top-color: rgba(24, 24, 27, 0.1);
+}
+
+:root[data-theme="light"] .primekg-raw-details summary {
+  color: #57534e;
+}
+
+:root[data-theme="light"] .primekg-raw-details pre {
+  background: #f5f4f1;
+  color: #1c1917;
+}
+
+/* Final light-mode polish: crisp cream, white cards, black text/actions. */
+:root[data-theme="light"] body,
+:root[data-theme="light"] .app-shell {
+  background: var(--bg-page);
+  color: var(--text-main);
+}
+
+:root[data-theme="light"] h1,
+:root[data-theme="light"] h2,
+:root[data-theme="light"] h3,
+:root[data-theme="light"] .hero-dashboard h1,
+:root[data-theme="light"] .primekg-hero h2,
+:root[data-theme="light"] .primekg-graph-heading h3,
+:root[data-theme="light"] .section-header h2,
+:root[data-theme="light"] .workspace-panel-heading strong,
+:root[data-theme="light"] .inspector-header h2,
+:root[data-theme="light"] .post-kg-console__heading h2 {
+  color: var(--text-main);
+  font-weight: 880;
+  letter-spacing: 0;
+}
+
+:root[data-theme="light"] p,
+:root[data-theme="light"] label,
+:root[data-theme="light"] small,
+:root[data-theme="light"] .context-helper,
+:root[data-theme="light"] .workspace-panel-heading span,
+:root[data-theme="light"] .section-header p,
+:root[data-theme="light"] .primekg-mode-helper,
+:root[data-theme="light"] .primekg-graph-heading p,
+:root[data-theme="light"] .primekg-inspector-empty,
+:root[data-theme="light"] .node-results-empty,
+:root[data-theme="light"] .log-empty {
+  color: var(--text-muted);
+}
+
+:root[data-theme="light"] .hero-dashboard,
+:root[data-theme="light"] .guided-demo-panel,
+:root[data-theme="light"] .demo-status-bar,
+:root[data-theme="light"] .workspace,
+:root[data-theme="light"] .canvas-panel,
+:root[data-theme="light"] .config,
+:root[data-theme="light"] .rag-panel,
+:root[data-theme="light"] .retrieval-panel,
+:root[data-theme="light"] .results-panel,
+:root[data-theme="light"] .mcp-panel,
+:root[data-theme="light"] .mcp-servers-panel,
+:root[data-theme="light"] .comparison-panel,
+:root[data-theme="light"] .code-panel,
+:root[data-theme="light"] .post-kg-console,
+:root[data-theme="light"] .primekg-panel,
+:root[data-theme="light"] .primekg-hero,
+:root[data-theme="light"] .primekg-control-surface,
+:root[data-theme="light"] .primekg-preview,
+:root[data-theme="light"] .primekg-graph-stage,
+:root[data-theme="light"] .primekg-inspector,
+:root[data-theme="light"] .primekg-focus-panel,
+:root[data-theme="light"] .primekg-legend-panel,
+:root[data-theme="light"] .primekg-path-panel,
+:root[data-theme="light"] .graph-answer-panel,
+:root[data-theme="light"] .graph-answer-card,
+:root[data-theme="light"] .graph-answer-path-card {
+  border-color: var(--border-soft);
+  background: var(--surface-card);
+  color: var(--text-soft);
+  box-shadow: var(--shadow-card);
+}
+
+:root[data-theme="light"] .product-nav {
+  border-color: var(--border-medium);
+  background: rgba(246, 243, 236, 0.96);
+}
+
+:root[data-theme="light"] button,
+:root[data-theme="light"] .action-button,
+:root[data-theme="light"] .icon-button,
+:root[data-theme="light"] .hero-example-select,
+:root[data-theme="light"] input,
+:root[data-theme="light"] select,
+:root[data-theme="light"] textarea,
+:root[data-theme="light"] .disease-combobox-control,
+:root[data-theme="light"] .primekg-search {
+  border-color: var(--border-medium);
+  background: #ffffff;
+  color: var(--text-soft);
+  box-shadow: none;
+}
+
+:root[data-theme="light"] .action-button--primary,
+:root[data-theme="light"] button.primary,
+:root[data-theme="light"] .hero-dashboard__actions .action-button--primary,
+:root[data-theme="light"] .primekg-actions .action-button--primary,
+:root[data-theme="light"] .primekg-hero-actions .action-button--primary,
+:root[data-theme="light"] .primekg-focus-neighborhood,
+:root[data-theme="light"] .primekg-copy-path,
+:root[data-theme="light"] .workflow-tab.active,
+:root[data-theme="light"] .results-tab.active,
+:root[data-theme="light"] .filter-button.active,
+:root[data-theme="light"] .tab-button.active,
+:root[data-theme="light"] .primekg-segmented button.active,
+:root[data-theme="light"] .primekg-quick-filters button.active,
+:root[data-theme="light"] .primekg-focus-modes button.active,
+:root[data-theme="light"] .primekg-demo-script button.active,
+:root[data-theme="light"] .primekg-depth-segments button.active {
+  border-color: #0a0a0a;
+  background: #0a0a0a;
+  color: #ffffff;
+  box-shadow: var(--shadow-button);
+}
+
+:root[data-theme="light"] .action-button--secondary,
+:root[data-theme="light"] .hero-dashboard__actions .action-button--secondary,
+:root[data-theme="light"] .primekg-actions .action-button--secondary,
+:root[data-theme="light"] .primekg-hero-actions .action-button--secondary,
+:root[data-theme="light"] .action-button--ghost,
+:root[data-theme="light"] .hero-secondary-actions .action-button {
+  border-color: var(--border-medium);
+  background: #ffffff;
+  color: var(--text-main);
+}
+
+:root[data-theme="light"] button:hover:not(:disabled),
+:root[data-theme="light"] .action-button:hover:not(:disabled),
+:root[data-theme="light"] .icon-button:hover:not(:disabled),
+:root[data-theme="light"] .hero-secondary-actions .action-button:hover:not(:disabled) {
+  border-color: var(--border-strong);
+  background: #ffffff;
+  color: var(--text-main);
+  box-shadow: var(--shadow-button);
+  transform: translateY(-1px);
+}
+
+:root[data-theme="light"] .action-button--primary:hover:not(:disabled),
+:root[data-theme="light"] button.primary:hover:not(:disabled),
+:root[data-theme="light"] .hero-dashboard__actions .action-button--primary:hover:not(:disabled),
+:root[data-theme="light"] .primekg-actions .action-button--primary:hover:not(:disabled),
+:root[data-theme="light"] .primekg-hero-actions .action-button--primary:hover:not(:disabled),
+:root[data-theme="light"] .primekg-focus-neighborhood:hover:not(:disabled),
+:root[data-theme="light"] .primekg-copy-path:hover:not(:disabled),
+:root[data-theme="light"] .workflow-tab.active:hover:not(:disabled),
+:root[data-theme="light"] .results-tab.active:hover:not(:disabled),
+:root[data-theme="light"] .filter-button.active:hover:not(:disabled),
+:root[data-theme="light"] .tab-button.active:hover:not(:disabled),
+:root[data-theme="light"] .primekg-segmented button.active:hover:not(:disabled),
+:root[data-theme="light"] .primekg-quick-filters button.active:hover:not(:disabled),
+:root[data-theme="light"] .primekg-focus-modes button.active:hover:not(:disabled),
+:root[data-theme="light"] .primekg-demo-script button.active:hover:not(:disabled),
+:root[data-theme="light"] .primekg-depth-segments button.active:hover:not(:disabled) {
+  border-color: #0a0a0a;
+  background: #0a0a0a;
+  color: #ffffff;
+}
+
+:root[data-theme="light"] button:active:not(:disabled),
+:root[data-theme="light"] .action-button:active:not(:disabled) {
+  box-shadow: 1px 1px 0 rgba(10, 10, 10, 0.22);
+  transform: translateY(0);
+}
+
+:root[data-theme="light"] button:disabled,
+:root[data-theme="light"] .action-button:disabled,
+:root[data-theme="light"] .icon-button:disabled {
+  border-color: var(--border-soft);
+  background: #f8f8f6;
+  color: var(--text-faint);
+  box-shadow: none;
+  cursor: not-allowed;
+  opacity: 0.78;
+  transform: none;
+}
+
+:root[data-theme="light"] .hero-kicker,
+:root[data-theme="light"] .hero-chip,
+:root[data-theme="light"] .status-pill,
+:root[data-theme="light"] .selection-chip,
+:root[data-theme="light"] .workflow-tab,
+:root[data-theme="light"] .results-tab,
+:root[data-theme="light"] .filter-button,
+:root[data-theme="light"] .tab-button,
+:root[data-theme="light"] .primekg-type-badge,
+:root[data-theme="light"] .primekg-filter-group button,
+:root[data-theme="light"] .primekg-quick-filters button,
+:root[data-theme="light"] .primekg-focus-modes button,
+:root[data-theme="light"] .primekg-demo-script button,
+:root[data-theme="light"] .primekg-segmented button,
+:root[data-theme="light"] .graph-answer-badges span,
+:root[data-theme="light"] .graph-answer-stats span {
+  border-color: var(--border-soft);
+  background: #ffffff;
+  color: var(--text-muted);
+  box-shadow: 1px 1px 0 rgba(10, 10, 10, 0.06);
+}
+
+:root[data-theme="light"] .canvas,
+:root[data-theme="light"] .primekg-force-shell,
+:root[data-theme="light"] .primekg-explorer,
+:root[data-theme="light"] .primekg-explorer-state {
+  border-color: var(--border-medium);
+  background:
+    linear-gradient(rgba(10, 10, 10, 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(10, 10, 10, 0.035) 1px, transparent 1px),
+    #ffffff;
+  background-size: 28px 28px, 28px 28px, auto;
+  box-shadow: var(--shadow-card);
+}
+
+:root[data-theme="light"] .workflow-node,
+:root[data-theme="light"] .metric-card,
+:root[data-theme="light"] .stat-card,
+:root[data-theme="light"] .node-result-item,
+:root[data-theme="light"] .log-entry,
+:root[data-theme="light"] .collection-item,
+:root[data-theme="light"] .mcp-server-item,
+:root[data-theme="light"] .result-output-card,
+:root[data-theme="light"] .primekg-status-card,
+:root[data-theme="light"] .primekg-workflow-steps div,
+:root[data-theme="light"] .primekg-stat-list,
+:root[data-theme="light"] .primekg-samples,
+:root[data-theme="light"] .primekg-sample-card,
+:root[data-theme="light"] .primekg-focus-story,
+:root[data-theme="light"] .primekg-detail-grid div,
+:root[data-theme="light"] .primekg-neighbor-list button,
+:root[data-theme="light"] .primekg-relation-summary div,
+:root[data-theme="light"] .primekg-evidence-path-list button,
+:root[data-theme="light"] .retrieved-chunks article,
+:root[data-theme="light"] .graph-evidence article {
+  border-color: var(--border-soft);
+  background: #ffffff;
+  color: var(--text-soft);
+  box-shadow: 1px 1px 0 rgba(10, 10, 10, 0.06);
+}
+
+:root[data-theme="light"] .workflow-node.selected {
+  border-color: #0a0a0a;
+  box-shadow: 0 0 0 3px rgba(10, 10, 10, 0.08), var(--shadow-button);
+}
+
+:root[data-theme="light"] .react-flow__controls,
+:root[data-theme="light"] .react-flow__minimap,
+:root[data-theme="light"] .primekg-toolbar,
+:root[data-theme="light"] .primekg-stats-bar div {
+  border-color: var(--border-soft);
+  background: #ffffff;
+  box-shadow: var(--shadow-soft);
+}
+
+:root[data-theme="light"] .react-flow__edge-textbg {
+  fill: #ffffff;
+  stroke: rgba(10, 10, 10, 0.16);
+}
+
+:root[data-theme="light"] .react-flow__edge-text {
+  fill: var(--text-main);
+}
+
+:root[data-theme="light"] pre,
+:root[data-theme="light"] code,
+:root[data-theme="light"] .result-output-final,
+:root[data-theme="light"] .result-output-card pre,
+:root[data-theme="light"] .raw-details pre,
+:root[data-theme="light"] .primekg-raw-details pre,
+:root[data-theme="light"] .log-list {
+  border-color: var(--border-soft);
+  background: #f8f8f6;
+  color: var(--text-main);
+}
+
+:root[data-theme="light"] input::placeholder,
+:root[data-theme="light"] textarea::placeholder,
+:root[data-theme="light"] .primekg-search-results span,
+:root[data-theme="light"] .disease-combobox-menu span,
+:root[data-theme="light"] .primekg-stats-bar span,
+:root[data-theme="light"] .primekg-focus-heading span,
+:root[data-theme="light"] .primekg-inspector-heading span,
+:root[data-theme="light"] .node-result-meta,
+:root[data-theme="light"] .log-entry-meta {
+  color: var(--text-faint);
+}
+
+:root[data-theme="light"] .scene-tooltip {
+  border: 1px solid var(--border-medium) !important;
+  background: #ffffff !important;
+  color: var(--text-main) !important;
+  box-shadow: var(--shadow-card) !important;
+}
+
+/* Reference-inspired light tightening: neutral cream, black borders, crisp controls. */
+:root[data-theme="light"] .hero-dashboard,
+:root[data-theme="light"] .guided-demo-panel,
+:root[data-theme="light"] .demo-status-bar,
+:root[data-theme="light"] .workspace,
+:root[data-theme="light"] .canvas-panel,
+:root[data-theme="light"] .config,
+:root[data-theme="light"] .rag-panel,
+:root[data-theme="light"] .retrieval-panel,
+:root[data-theme="light"] .results-panel,
+:root[data-theme="light"] .mcp-panel,
+:root[data-theme="light"] .mcp-servers-panel,
+:root[data-theme="light"] .comparison-panel,
+:root[data-theme="light"] .code-panel,
+:root[data-theme="light"] .post-kg-console,
+:root[data-theme="light"] .primekg-panel,
+:root[data-theme="light"] .primekg-hero,
+:root[data-theme="light"] .primekg-control-surface,
+:root[data-theme="light"] .primekg-preview,
+:root[data-theme="light"] .primekg-graph-stage,
+:root[data-theme="light"] .primekg-inspector,
+:root[data-theme="light"] .primekg-focus-panel,
+:root[data-theme="light"] .primekg-legend-panel,
+:root[data-theme="light"] .primekg-path-panel {
+  border-color: rgba(10, 10, 10, 0.14);
+  background: #ffffff;
+}
+
+:root[data-theme="light"] .action-button,
+:root[data-theme="light"] .icon-button,
+:root[data-theme="light"] .hero-example-select,
+:root[data-theme="light"] .theme-toggle,
+:root[data-theme="light"] .disease-combobox-control,
+:root[data-theme="light"] .primekg-search,
+:root[data-theme="light"] .primekg-segmented button,
+:root[data-theme="light"] .primekg-quick-filters button,
+:root[data-theme="light"] .primekg-focus-modes button,
+:root[data-theme="light"] .primekg-demo-script button,
+:root[data-theme="light"] .primekg-filter-group button {
+  border-color: rgba(10, 10, 10, 0.24);
+  border-radius: var(--radius-sm);
+  background: #ffffff;
+  color: var(--text-main);
+  font-weight: 780;
+}
+
+:root[data-theme="light"] .action-button--primary,
+:root[data-theme="light"] button.primary,
+:root[data-theme="light"] .hero-dashboard__actions .action-button--primary,
+:root[data-theme="light"] .primekg-actions .action-button--primary,
+:root[data-theme="light"] .primekg-hero-actions .action-button--primary,
+:root[data-theme="light"] .primekg-segmented button.active,
+:root[data-theme="light"] .primekg-quick-filters button.active,
+:root[data-theme="light"] .primekg-focus-modes button.active,
+:root[data-theme="light"] .primekg-demo-script button.active,
+:root[data-theme="light"] .primekg-depth-segments button.active {
+  border-color: #0a0a0a;
+  background: #0a0a0a;
+  color: #ffffff;
+  box-shadow: var(--shadow-button);
+}
+
+:root[data-theme="light"] .hero-kicker,
+:root[data-theme="light"] .hero-chip,
+:root[data-theme="light"] .status-pill,
+:root[data-theme="light"] .selection-chip,
+:root[data-theme="light"] .workflow-tab,
+:root[data-theme="light"] .results-tab,
+:root[data-theme="light"] .filter-button,
+:root[data-theme="light"] .tab-button,
+:root[data-theme="light"] .primekg-type-badge {
+  border-color: rgba(10, 10, 10, 0.16);
+  border-radius: var(--radius-sm);
+  background: #ffffff;
+  color: var(--text-muted);
+}
+
+:root[data-theme="light"] .primekg-ask-hint.hinted {
+  border-color: rgba(10, 10, 10, 0.18);
+  background: #ffffff;
+  color: #0a0a0a;
+}
+
+:root[data-theme="light"] .primekg-ask-hint.auto {
+  border-color: rgba(23, 106, 58, 0.2);
+  background: #f3faf5;
+  color: #176a3a;
+}
+
+:root[data-theme="light"] .primekg-force-shell::before {
+  background:
+    radial-gradient(circle at 50% 45%, rgba(10, 10, 10, 0.05), transparent 34%),
+    linear-gradient(rgba(10, 10, 10, 0.032) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(10, 10, 10, 0.032) 1px, transparent 1px);
+  background-size: auto, 36px 36px, 36px 36px;
+  opacity: 0.76;
+}
+
+/* Dark-mode guardrail for shared widgets that also have light defaults. */
+:root:not([data-theme="light"]) .file-upload {
+  border-color: rgba(148, 163, 184, 0.34);
+  background:
+    linear-gradient(145deg, rgba(15, 23, 42, 0.72), rgba(5, 10, 22, 0.58));
+  color: var(--text-muted);
+}
+
+:root:not([data-theme="light"]) .file-upload:hover {
+  border-color: rgba(110, 231, 255, 0.36);
+  background:
+    linear-gradient(145deg, rgba(23, 37, 64, 0.78), rgba(8, 15, 28, 0.64));
+  color: var(--text-main);
+}
+
+:root:not([data-theme="light"]) .results-panel,
+:root:not([data-theme="light"]) .logs-panel,
+:root:not([data-theme="light"]) .mcp-servers-panel,
+:root:not([data-theme="light"]) .workflow-stats-panel,
+:root:not([data-theme="light"]) .node-stats-panel,
+:root:not([data-theme="light"]) .node-stats-panel.interactive {
+  border-color: var(--border-soft);
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.058), rgba(255, 255, 255, 0.018)),
+    rgba(13, 22, 39, 0.78);
+  color: var(--text-soft);
+  box-shadow: var(--shadow-soft);
+}
+
+:root:not([data-theme="light"]) .section-header,
+:root:not([data-theme="light"]) .utility-disclosure > summary,
+:root:not([data-theme="light"]) .utility-disclosure[open] > summary {
+  border-color: var(--border-soft);
+  background: transparent;
+  color: var(--text-soft);
+}
+
+:root:not([data-theme="light"]) .section-header h2,
+:root:not([data-theme="light"]) .result-output-header strong,
+:root:not([data-theme="light"]) .mcp-server-item strong {
+  color: var(--text-main);
+}
+
+:root:not([data-theme="light"]) .section-header p,
+:root:not([data-theme="light"]) .result-output-header span,
+:root:not([data-theme="light"]) .disclosure-header > span {
+  color: var(--text-muted);
+}
+
+:root:not([data-theme="light"]) .disclosure-header > span {
+  border-color: var(--border-soft);
+  background: rgba(15, 23, 42, 0.56);
+}
+
+:root:not([data-theme="light"]) .result-output-card,
+:root:not([data-theme="light"]) .result-output-final,
+:root:not([data-theme="light"]) .stat-card,
+:root:not([data-theme="light"]) .metric-card,
+:root:not([data-theme="light"]) .log-stat-card,
+:root:not([data-theme="light"]) .mcp-server-item,
+:root:not([data-theme="light"]) .mcp-add-form,
+:root:not([data-theme="light"]) .node-stat-summary,
+:root:not([data-theme="light"]) .node-ranking-item,
+:root:not([data-theme="light"]) .type-breakdown-item,
+:root:not([data-theme="light"]) .chart-row,
+:root:not([data-theme="light"]) .metric-detail-card,
+:root:not([data-theme="light"]) .node-slowest-panel,
+:root:not([data-theme="light"]) .node-breakdown-panel,
+:root:not([data-theme="light"]) .node-duration-chart,
+:root:not([data-theme="light"]) .panel-empty-state {
+  border-color: var(--border-soft);
+  background: rgba(5, 10, 22, 0.48);
+  color: var(--text-soft);
+}
+
+:root:not([data-theme="light"]) .metric-card:hover,
+:root:not([data-theme="light"]) .metric-card.active,
+:root:not([data-theme="light"]) .node-stat-summary:hover,
+:root:not([data-theme="light"]) .node-stat-summary.focused,
+:root:not([data-theme="light"]) .node-ranking-item.focused,
+:root:not([data-theme="light"]) .chart-row:hover,
+:root:not([data-theme="light"]) .chart-row.focused {
+  border-color: rgba(110, 231, 255, 0.28);
+  background: rgba(15, 23, 42, 0.72);
+  color: var(--text-main);
+}
+
+:root:not([data-theme="light"]) .stat-card strong,
+:root:not([data-theme="light"]) .metric-card strong,
+:root:not([data-theme="light"]) .log-stat-card strong,
+:root:not([data-theme="light"]) .node-stat-summary strong,
+:root:not([data-theme="light"]) .node-ranking-item strong,
+:root:not([data-theme="light"]) .type-breakdown-item strong,
+:root:not([data-theme="light"]) .chart-label strong {
+  color: var(--text-main);
+}
+
+:root:not([data-theme="light"]) .stat-card span,
+:root:not([data-theme="light"]) .metric-card span,
+:root:not([data-theme="light"]) .log-stat-card span,
+:root:not([data-theme="light"]) .node-stat-summary span,
+:root:not([data-theme="light"]) .node-ranking-item span,
+:root:not([data-theme="light"]) .node-ranking-meta,
+:root:not([data-theme="light"]) .type-breakdown-item span {
+  color: var(--text-muted);
+}
+
+:root:not([data-theme="light"]) .result-output-card pre,
+:root:not([data-theme="light"]) .log-list,
+:root:not([data-theme="light"]) .raw-details pre,
+:root:not([data-theme="light"]) #generated-code {
+  border-color: rgba(148, 163, 184, 0.18);
+  background: rgba(2, 6, 23, 0.72);
+  color: var(--text-soft);
+}
+
+:root:not([data-theme="light"]) .results-tab,
+:root:not([data-theme="light"]) .filter-button,
+:root:not([data-theme="light"]) .tab-button,
+:root:not([data-theme="light"]) .log-search,
+:root:not([data-theme="light"]) .node-type-filter {
+  border-color: rgba(148, 163, 184, 0.18);
+  background: rgba(15, 23, 42, 0.62);
+  color: var(--text-muted);
+}
+
+:root:not([data-theme="light"]) .results-tab:hover,
+:root:not([data-theme="light"]) .results-tab.active,
+:root:not([data-theme="light"]) .filter-button:hover,
+:root:not([data-theme="light"]) .filter-button.active,
+:root:not([data-theme="light"]) .tab-button:hover,
+:root:not([data-theme="light"]) .tab-button.active {
+  border-color: rgba(110, 231, 255, 0.34);
+  background: rgba(73, 214, 255, 0.12);
+  color: var(--text-main);
+}
+
+/* Narrow import-order guard for component-local tab controls. */
+:root[data-theme="light"] .execution-mode-control .mode-btn.active {
+  border-color: #0a0a0a !important;
+  background: #0a0a0a !important;
+  color: #ffffff !important;
+  box-shadow: var(--shadow-button) !important;
+}
+
+:root[data-theme="light"] .execution-mode-control .mode-btn.active svg,
+:root[data-theme="light"] .execution-mode-control .mode-btn.active span {
+  color: inherit !important;
+}
+
+:root[data-theme="light"] .workflow-tabs-container .workflow-tab.active {
+  border-color: #0a0a0a !important;
+  background: #0a0a0a !important;
+  color: #ffffff !important;
+  box-shadow: var(--shadow-button) !important;
+}
+
+:root[data-theme="light"] .workflow-tabs-container .workflow-tab.active .tab-name {
+  color: #ffffff !important;
+}
+
+:root[data-theme="light"] .workflow-tabs-container .workflow-tab.active .tab-action-btn {
+  background: rgba(255, 255, 255, 0.16) !important;
+  color: rgba(255, 255, 255, 0.82) !important;
+}
+
+:root[data-theme="light"] .workflow-tabs-container .workflow-tab.active .tab-action-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.24) !important;
+  color: #ffffff !important;
+}
+
+:root[data-theme="light"] .workflow-tabs-container .add-tab-btn {
+  border-color: rgba(10, 10, 10, 0.16) !important;
+  background: #ffffff !important;
+  color: var(--text-main) !important;
 }
 
 @media (max-width: 1500px) {

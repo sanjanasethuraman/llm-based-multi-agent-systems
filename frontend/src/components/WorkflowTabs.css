@@ -60,12 +60,40 @@
   box-shadow: 0 0 24px rgba(73, 214, 255, 0.12);
 }
 
+:root[data-theme="light"] .workflow-tab {
+  background: #ffffff;
+  border-color: rgba(10, 10, 10, 0.16);
+  color: var(--text-main);
+  box-shadow: 1px 1px 0 rgba(10, 10, 10, 0.06);
+}
+
+:root[data-theme="light"] .workflow-tab:hover {
+  background: #ffffff;
+  border-color: rgba(10, 10, 10, 0.34);
+  box-shadow: var(--shadow-button);
+}
+
+:root[data-theme="light"] .workflow-tab.active {
+  background: #0a0a0a;
+  border-color: #0a0a0a;
+  color: #ffffff;
+  box-shadow: var(--shadow-button);
+}
+
 .tab-name {
   font-weight: 500;
   font-size: 13px;
   color: var(--text-soft, #dbe7f6);
   cursor: text;
   user-select: none;
+}
+
+:root[data-theme="light"] .workflow-tab .tab-name {
+  color: var(--text-main);
+}
+
+:root[data-theme="light"] .workflow-tab.active .tab-name {
+  color: #ffffff;
 }
 
 .tab-name:hover {
@@ -138,6 +166,15 @@
   color: var(--text-main, #f7fbff);
 }
 
+:root[data-theme="light"] .workflow-tab.active .tab-action-btn {
+  color: rgba(255, 255, 255, 0.82);
+}
+
+:root[data-theme="light"] .workflow-tab.active .tab-action-btn:hover:not(:disabled) {
+  background-color: rgba(255, 255, 255, 0.16);
+  color: #ffffff;
+}
+
 .tab-action-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
@@ -163,4 +200,17 @@
   background: rgba(23, 37, 64, 0.9);
   color: var(--text-main, #f7fbff);
   border-color: rgba(110, 231, 255, 0.38);
+}
+
+:root[data-theme="light"] .add-tab-btn {
+  background: #ffffff;
+  border-color: rgba(10, 10, 10, 0.16);
+  color: var(--text-main);
+}
+
+:root[data-theme="light"] .add-tab-btn:hover {
+  background: #0a0a0a;
+  border-color: #0a0a0a;
+  color: #ffffff;
+  box-shadow: var(--shadow-button);
 }

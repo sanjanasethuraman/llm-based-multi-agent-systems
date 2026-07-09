@@ -5,6 +5,7 @@ export default function GraphLegend({
   relationTypes = {},
   hiddenNodeTypes,
   hiddenRelationTypes,
+  nodeTypeColors,
   onToggleNodeType,
   onToggleRelationType,
 }) {
@@ -15,7 +16,7 @@ export default function GraphLegend({
         counts={nodeTypes}
         hidden={hiddenNodeTypes}
         onToggle={onToggleNodeType}
-        colorFor={typeColor}
+        colorFor={(type) => typeColor(type, nodeTypeColors)}
       />
       <FilterGroup
         title="Relation Types"
@@ -57,6 +58,6 @@ function FilterGroup({ title, counts, hidden, onToggle, colorFor }) {
   );
 }
 
-function typeColor(type) {
-  return PRIMEKG_NODE_TYPE_COLORS[type] || PRIMEKG_NODE_TYPE_COLORS.other;
+function typeColor(type, colors = PRIMEKG_NODE_TYPE_COLORS) {
+  return colors[type] || colors.other || PRIMEKG_NODE_TYPE_COLORS.other;
 }

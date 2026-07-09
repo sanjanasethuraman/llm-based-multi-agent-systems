@@ -28,7 +28,15 @@ export default function HeroHeader({
   theme = "dark",
 }) {
   const PresentationIcon = presentationMode ? Minimize2 : Maximize2;
-  const ThemeIcon = theme === "dark" ? Sun : Moon;
+  const ThemeIcon = theme === "dark" ? Moon : Sun;
+  const nextTheme = theme === "dark" ? "light" : "dark";
+  const handleThemeKeyDown = (event) => {
+    if (event.repeat || (event.key !== "Enter" && event.key !== " ")) {
+      return;
+    }
+    event.preventDefault();
+    onToggleTheme();
+  };
 
   return (
     <header className="hero-header">
@@ -61,16 +69,19 @@ export default function HeroHeader({
           <button
             type="button"
             className="theme-toggle"
+            data-theme-state={theme}
             onClick={onToggleTheme}
-            aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} theme`}
-            title={`Switch to ${theme === "dark" ? "light" : "dark"} theme`}
+            onKeyDown={handleThemeKeyDown}
+            aria-label={`Current theme: ${theme}. Switch to ${nextTheme} theme`}
+            aria-pressed={theme === "light"}
+            title={`Switch to ${nextTheme} theme`}
           >
             <span className="theme-toggle__track" aria-hidden="true">
               <span className="theme-toggle__thumb">
                 <ThemeIcon size={13} />
               </span>
             </span>
-            <span>{theme === "dark" ? "Light" : "Dark"}</span>
+            <span className="theme-toggle__label">{theme === "dark" ? "Dark" : "Light"}</span>
           </button>
           <ActionButton
             icon={PresentationIcon}
