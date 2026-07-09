@@ -3,6 +3,8 @@ function StatusBadge({ status }) {
     idle: "Idle",
     running: "Running",
     completed: "Done",
+    success: "Done",
+    skipped: "Skipped",
     warning: "Warn",
     error: "Error",
   };

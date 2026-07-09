@@ -26,7 +26,6 @@ import {
 } from "./workflow.js";
 
 import McpServersPanel from "./components/panels/McpServersPanel.jsx"
-import AppShell from "./components/AppShell.jsx"
 import LogsPanel from "./components/panels/LogsPanel.jsx"
 import StatusBadge from "./components/StatusBadge.jsx";
 import AppShell from "./components/AppShell.jsx"
@@ -1160,6 +1159,7 @@ function WorkflowApp() {
           visualGraph={primekgGraph}
           onLoadAnswerGraph={loadAnswerGraphFromEvidence}
           onOpenGraph={openKnowledgeGraph}
+          workflow={workflow}
         />
         <RetrievalPanel
           retrievals={retrievals}
@@ -1168,7 +1168,6 @@ function WorkflowApp() {
           onLoadAnswerGraph={loadAnswerGraphFromEvidence}
           onOpenGraph={openKnowledgeGraph}
         />
-        <McpCallsPanel calls={mcpCalls} />
 
         {comparisonReports.length > 0 && (
           <section className="comparison-panel">
@@ -1948,19 +1947,17 @@ function getNodeCompactStats(node, result, retrievalInfo) {
   const matches = retrievalInfo?.matches?.length || 0;
   const graphEntities = retrievalInfo?.graphEntities?.length || result?.graphEntities?.length || 0;
   const graphRelationships = retrievalInfo?.graphRelationships?.length || result?.graphRelationships?.length || 0;
-  const mcpCalls = result?.mcpCalls?.length || result?.toolCalls?.length || 0;
   const tokenCount = result?.usage?.total_tokens || result?.usage?.totalTokens || result?.tokens;
 
   if (matches) stats.push(`${matches} chunks`);
   if (graphEntities) stats.push(`${graphEntities} entities`);
   if (graphRelationships) stats.push(`${graphRelationships} rels`);
-  if (mcpCalls) stats.push(`${mcpCalls} calls`);
   if (tokenCount) stats.push(`${tokenCount} tokens`);
   if (node.type === "retriever" && node.config?.topK) stats.push(`top ${node.config.topK}`);
   return stats.slice(0, 4);
 }
 
-function ResultPanels({ output, logs, stats, nodeResults, retrievals, selectedDisease = "", visualGraph = null, onLoadAnswerGraph, onOpenGraph }) {
+function ResultPanels({ output, logs, stats, nodeResults, retrievals, selectedDisease = "", visualGraph = null, onLoadAnswerGraph, onOpenGraph , workflow}) {
   const [selectedLogFilter, setSelectedLogFilter] = useState("all");
   const [searchTerm, setSearchTerm] = useState("");
   const [showFullOutput, setShowFullOutput] = useState(true);
@@ -2110,69 +2107,7 @@ function ResultPanels({ output, logs, stats, nodeResults, retrievals, selectedDi
         />
       </section>
 
-      <details className="logs-panel utility-disclosure" open={logs.length > 0 && logs.length <= 5}>
-        <summary className="section-header disclosure-header">
-          <div>
-            <h2>Logs</h2>
-            <p>Filter and search execution logs for better insight.</p>
-          </div>
-          <span>{filteredLogs.length} shown</span>
-        </summary>
-        <div className="log-toolbar">
-          <div className="log-filters">
-            {[
-              { key: "all", label: `All (${logCounts.all})` },
-              { key: "completed", label: `Done (${logCounts.completed})` },
-              { key: "warning", label: `Warn (${logCounts.warning})` },
-              { key: "error", label: `Error (${logCounts.error})` },
-            ].map((filter) => (
-              <button
-                key={filter.key}
-                type="button"
-                className={`filter-button ${selectedLogFilter === filter.key ? "active" : ""}`}
-                onClick={() => setSelectedLogFilter(filter.key)}
-              >
-                {filter.label}
-              </button>
-            ))}
-          </div>
-          <input
-            className="log-search"
-            placeholder="Search logs"
-            value={searchTerm}
-            onChange={(event) => setSearchTerm(event.target.value)}
-          />
-        </div>
-        <div className="log-summary-grid">
-          <div className="log-stat-card">
-            <strong>{filteredLogs.length}</strong>
-            <span>Shown</span>
-          </div>
-          <div className="log-stat-card">
-            <strong>{logCounts.error}</strong>
-            <span>Total errors</span>
-          </div>
-          <div className="log-stat-card">
-            <strong>{logCounts.warning}</strong>
-            <span>Total warnings</span>
-          </div>
-        </div>
-        <div className="log-list">
-          {filteredLogs.length ? (
-            filteredLogs.map((item, index) => (
-              <article key={`${item.nodeId}-${index}`} className={`log-entry ${item.status || "completed"}`}>
-                <div className="log-entry-header">
-                  <StatusBadge status={item.status || "completed"} />
-                  <span className="log-entry-meta">{item.nodeId}</span>
-                </div>
-                <p>{item.message}</p>
-              </article>
-            ))
-          ) : (
-            <p className="log-empty">No logs match the current filter.</p>
-          )}
-        </div>
-      </details>
+      <LogsPanel logs={logs} logCounts={logCounts}/>
 
       <WorkflowStatsPanel stats={stats} retrievals={retrievals} />
       <NodeStatsPanel nodeResults={nodeResults} stats={stats} workflow={workflow} />
@@ -2579,63 +2514,6 @@ function graphEvidenceItemsFromRetrievals(retrievals) {
 function uniqueValues(values) {
   return Array.from(new Set((values || []).map((value) => String(value || "").trim()).filter(Boolean)));
 }
-
-function McpCallsPanel({ calls }) {
-  return (
-    <section className="mcp-panel">
-      <div className="section-header">
-        <div>
-          <h2>MCP Calls</h2>
-          <p>{calls.length ? `${calls.length} MCP tool call(s) executed.` : "No MCP tool run yet."}</p>
-        </div>
-      </div>
-      <div className="mcp-call-grid">
-        {calls.length ? calls.map((call, index) => {
-          const status = call.error ? "error" : call.status || "completed";
-          return (
-            <article key={`${call.nodeId}-${call.toolId}-${call.timestamp || index}`} className={`mcp-call-card ${status}`}>
-              <div className="mcp-call-header">
-                <div>
-                  <strong>{call.toolId}</strong>
-                  <span>{call.server || "demo"}</span>
-                </div>
-                <StatusBadge status={status} />
-              </div>
-              <div className="mcp-call-meta">
-                <span>Node: {call.nodeId}</span>
-                {call.timestamp ? <span>{call.timestamp}</span> : null}
-              </div>
-              {call.error ? <p className="mcp-call-error">{call.error}</p> : null}
-              <details className="raw-details">
-                <summary>Arguments and result</summary>
-                <pre>{JSON.stringify({ arguments: call.arguments, result: call.result }, null, 2)}</pre>
-              </details>
-            </article>
-          );
-        }) : (
-          <div className="panel-empty-state">
-            <strong>No MCP calls yet</strong>
-            <span>Run a workflow with an MCP tool node to inspect tool arguments and results.</span>
-          </div>
-        )}
-      </div>
-    </section>
-  );
-}
-
-function StatusBadge({ status }) {
-  const labels = {
-    idle: "Idle",
-    running: "Running",
-    completed: "Done",
-    success: "Done",
-    skipped: "Skipped",
-    warning: "Warn",
-    error: "Error",
-  };
-  return <span className={`status-badge ${status}`}>{labels[status] || status}</span>;
-}
-
 
 function selectionLabel(node, edge) {
   if (node) {
