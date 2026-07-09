@@ -1,21 +1,29 @@
-from mcp import ClientSession, StdioServerParameters
+from mcp import ClientSession, StdioServerParameters, Tool
 from mcp.client.stdio import stdio_client
 from mcp.client.streamable_http import streamable_http_client
-from httpx import AsyncClient
+from httpx import AsyncClient, Timeout
 import logging
+from backend.mcp_registry import McpServerConfig
 
 logger = logging.getLogger(__name__)
 
+
+def _is_process_exit(exc):
+    return isinstance(exc, (KeyboardInterrupt, SystemExit))
+
+
 class McpToolClient:
-    """Wraps an MCP stdio server. Call .call_tool() to call a tool on the server."""
 
     def __init__(self, server_script: str = None):
-        self._config = {"transport": "stdio", "command": "python3", "args": ["-m", server_script]}
-        self._session: None
+        self._config = {
+            "transport": "stdio",
+            "command": "python3",
+            "args": ["-m", server_script],
+        }
+        self._session = None
 
     @classmethod
-    def from_config(cls, config):
-        """Create from a McpServerConfig."""
+    def from_config(cls, config: McpServerConfig):
         instance = cls.__new__(cls)
         instance._config = {
             "transport": config.transport,
@@ -35,41 +43,56 @@ class McpToolClient:
             )
             self._streams = stdio_client(params)
             read, write = await self._streams.__aenter__()
+            self._session = ClientSession(read, write)
+            await self._session.__aenter__()
+            await self._session.initialize()
         else:
-            asyncClient =AsyncClient(headers=self._config["headers"])
+            self._http_client = AsyncClient(
+                headers=self._config["headers"],
+                timeout=Timeout(650.0, connect=10.0),
+            )
             self._streams = streamable_http_client(
                 self._config["url"],
-                http_client=asyncClient,
+                http_client=self._http_client,
+                terminate_on_close=True,
             )
             read, write, _ = await self._streams.__aenter__()
-        self._session = ClientSession(read, write)
-        await self._session.__aenter__()
-        await self._session.initialize()
+            self._session = ClientSession(read, write)
+            await self._session.__aenter__()
+            await self._session.initialize()
         return self
-    
+
     async def __aexit__(self, *args):
-        # Close the MCP session first. Wrap stream close in try/except
-        # because stdio_client/anyio may raise cancel-scope-related
-        # RuntimeErrors when closed from a different task context; log
-        # and continue cleanup rather than raising.
         try:
-            await self._session.__aexit__(*args)
-        except Exception as e:
-            logger.warning(f"Error closing MCP session: {e}")
+            if self._session:
+                await self._session.__aexit__(*args)
+        except BaseException as e:
+            if _is_process_exit(e):
+                raise
+            logger.debug(f"Session cleanup: {e}")
+        finally:
+            try:
+                if getattr(self, "_streams", None):
+                    await self._streams.__aexit__(*args)
+            except BaseException as e:
+                if _is_process_exit(e):
+                    raise
+                logger.debug(f"Stream cleanup: {e}")
+            finally:
+                if getattr(self, "_http_client", None):
+                    try:
+                        await self._http_client.aclose()
+                    except BaseException as e:
+                        if _is_process_exit(e):
+                            raise
+                        logger.debug(f"HTTP client cleanup: {e}")
 
-        try:
-            await self._streams.__aexit__(*args)
-        except Exception as e:
-            logger.warning(f"Error closing streams: {e}")
-
-    async def list_tools(self) -> list[dict]:
-        """Returns all tools the server exposes — name, description, schema."""
+    async def list_tools(self) -> list[Tool]:
         result = await self._session.list_tools()
         return result.tools
 
-    async def call_tool(self, name: str, arguments: dict):
+    async def call_tool(self, name: str, arguments: dict) -> str:
         result = await self._session.call_tool(name, arguments)
-        # result.content is a list of content blocks; extract text
         return "\n".join(
             block.text for block in result.content if hasattr(block, "text")
         )

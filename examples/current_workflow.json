@@ -1,0 +1,132 @@
+{
+  "label": "Software Development Workflow",
+
+  "workflow": {
+    "nodes": [
+      {
+        "id": "input-1",
+        "type": "input",
+        "label": "User Query",
+        "position": {
+          "x": 68.38501503942547,
+          "y": 174.25494485543993
+        },
+        "config": {
+          "text": "Write a Java method that multiplies two arguments and prints the result."
+        }
+      },
+      {
+        "id": "output-1",
+        "type": "output",
+        "label": "Final Output",
+        "position": {
+          "x": 762.6313686313686,
+          "y": 177.8091908091908
+        },
+        "config": {}
+      },
+      {
+        "id": "sub_agent-4",
+        "type": "sub_agent",
+        "label": "Coding-Agent",
+        "position": {
+          "x": 531.9751919352166,
+          "y": 330.1315572817549
+        },
+        "config": {
+          "name": "Coding-Agent",
+          "provider": "ollama",
+          "model": "qwen3:8b",
+          "baseUrl": "http://127.0.0.1:11434",
+          "huggingFaceToken": "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",
+          "maxNewTokens": 512,
+          "temperature": 0.1,
+          "think": "false",
+          "systemPrompt": "You are a Coding Agent responsible for writing a java method.\nYou will receive the specification for the method, then\n1. write the java method\n2. call the testing-agent with the written method\n3. return your java method and the junit test from the testing-agent."
+        }
+      },
+      {
+        "id": "agent-5",
+        "type": "agent",
+        "label": "Orchestrator-Agent",
+        "position": {
+          "x": 325.6045685035453,
+          "y": 168.9838241679092
+        },
+        "config": {
+          "name": "Orchestrator-Agent",
+          "provider": "ollama",
+          "model": "qwen3:8b",
+          "baseUrl": "http://127.0.0.1:11434",
+          "huggingFaceToken": "",
+          "maxNewTokens": 512,
+          "temperature": 0.1,
+          "think": "false",
+          "systemPrompt": "You are an orchestrator agent for developing a java method. The feature of the method is defined in the user input.\n1. Call the Specification-Agent with the required feature. The specification agent will respond with a specification for the method.\n2. Call the Coding Agent with the specification as an argument.\n3. Return the method and the junit test from the coding agent."
+        }
+      },
+      {
+        "id": "sub_agent-7",
+        "type": "sub_agent",
+        "label": "Testing-Agent",
+        "position": {
+          "x": 831.4112749002499,
+          "y": 346.9411025636945
+        },
+        "config": {
+          "name": "Testing-Agent",
+          "provider": "ollama",
+          "model": "llama3.2:1b",
+          "baseUrl": "http://127.0.0.1:11434",
+          "huggingFaceToken": "",
+          "maxNewTokens": 512,
+          "temperature": 0.2,
+          "think": false,
+          "systemPrompt": "You are a testing agent.\nYou will receive a java method and your task is to return one JUnit test to test the java method."
+        }
+      },
+      {
+        "id": "sub_agent-8",
+        "type": "sub_agent",
+        "label": "Specification-Agent",
+        "position": {
+          "x": 573.5131601173279,
+          "y": 0.600604358188356
+        },
+        "config": {
+          "name": "Specification-Agent",
+          "provider": "ollama",
+          "model": "llama3.2:1b",
+          "baseUrl": "http://127.0.0.1:11434",
+          "huggingFaceToken": "",
+          "maxNewTokens": 512,
+          "temperature": 0.2,
+          "think": false,
+          "systemPrompt": "You are a specification agent. You will receive a feature that should be realised by a java method.\nReturn a short specification for that method for the next agent to implement."
+        }
+      }
+    ],
+    "edges": [
+      {
+        "source": "input-1",
+        "target": "agent-5"
+      },
+      {
+        "source": "agent-5",
+        "target": "sub_agent-4"
+      },
+      {
+        "source": "agent-5",
+        "target": "output-1"
+      },
+      {
+        "source": "sub_agent-4",
+        "target": "sub_agent-7"
+      },
+      {
+        "source": "agent-5",
+        "target": "sub_agent-8"
+      }
+    ]
+  }
+}
