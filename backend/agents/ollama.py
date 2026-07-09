@@ -13,10 +13,23 @@ class OllamaProvider(AgentProvider):
     MAX_ITERATIONS = 10
 
     async def run(self, config, incoming, mcp_registry, available_tools: list[dict]):
+        stats = {
+            "toolCalls": 0,
+            "subAgentCalls": 0,
+            "calledTools": [],
+            "providerLogs": [],
+            "totalDuration": 0,
+            "inputTokens": 0,
+            "outputTokens": 0,
+        }
+        sub_agent_stats = {}
         tool_calls = 0
         sub_agent_calls = 0
         called_tools = []
         provider_logs = []
+        total_duration = 0
+        input_tokens = 0
+        output_tokens = 0
         model = config.get("model", "llama3.2:1b")
         messages = [{"role": "system", "content": config.get("systemPrompt", "You are a helpful assistant.")}] 
 
@@ -72,6 +85,11 @@ class OllamaProvider(AgentProvider):
                 stream=False,
             )
             logger.info(f"Response: {response}")
+            
+            total_duration += response.total_duration
+            input_tokens += response.prompt_eval_count
+            output_tokens += response.eval_count
+
             messages.append(response.message)
             if response.message.tool_calls:
                 for tool_call in response.message.tool_calls:
@@ -134,6 +152,16 @@ class OllamaProvider(AgentProvider):
                         sub_agent_calls += sub_stats.get("subAgentCalls", 0) + 1
                         called_tools.extend(sub_stats.get("calledTools", []))
                         provider_logs.extend(sub_stats.get("providerLogs", []))
+                        sub_agent_stats.setdefault(server_id, {
+                            "totalDuration": 0,
+                            "inputTokens": 0,
+                            "outputTokens": 0,
+                        })
+
+                        sub_agent_stats[server_id]["totalDuration"] += sub_stats.get("totalDuration", 0)
+                        sub_agent_stats[server_id]["inputTokens"] += sub_stats.get("inputTokens", 0)
+                        sub_agent_stats[server_id]["outputTokens"] += sub_stats.get("outputTokens", 0)
+                       
                         result_text = raw.get("result", "")
                         provider_logs.append({
                             "status": "info",
@@ -156,7 +184,17 @@ class OllamaProvider(AgentProvider):
                     "message": "Ollama returned no tool calls.",
                 })
                 break
-        return response.message.content, tool_calls, sub_agent_calls, called_tools, provider_logs
+        stats.update({
+            "toolCalls": tool_calls,
+            "subAgentCalls": sub_agent_calls,
+            "calledTools": called_tools,
+            "providerLogs": provider_logs,
+            "totalDuration": total_duration,
+            "inputTokens": input_tokens,
+            "outputTokens": output_tokens,
+            "subAgentStats": sub_agent_stats | {}
+        })
+        return response.message.content, stats
     
     def _to_ollama_schema(self, tool) -> dict:
         """Convert an MCP Tool object to Ollama's expected tool schema."""

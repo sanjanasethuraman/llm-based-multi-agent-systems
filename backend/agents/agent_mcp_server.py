@@ -64,7 +64,7 @@ async def _run_agent(node_id, agent_config, edges, nodes, user_input):
     available = get_available_tools(node_id, edges, nodes)
 
     provider = get_agent_provider(agent_config.get("provider", "mock"))
-    result, tool_calls, sub_agent_calls, called_tools, provider_logs = await provider.run(
+    result, stats = await provider.run(
         config=agent_config,
         incoming=user_input,
         mcp_registry=registry,
@@ -73,12 +73,7 @@ async def _run_agent(node_id, agent_config, edges, nodes, user_input):
     logger.info(f"Sub-agent '{agent_config.get('name')}' returning result")
     payload = json.dumps({
         "text": result,
-        "stats": {
-            "toolCalls": tool_calls,
-            "subAgentCalls": sub_agent_calls,
-            "calledTools": called_tools,
-            "providerLogs": provider_logs,
-        }
+        "stats": stats,
     })
     return payload
 

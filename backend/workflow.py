@@ -169,6 +169,8 @@ async def run_workflow(workflow, mcp_registry: McpClientRegistry):
         "mcpCalls": 0,
         "estimatedTokens": 0,
         "subAgentCalls": 0,
+        "durations": {},
+        "tokens": {},
     }
 
     context = {
