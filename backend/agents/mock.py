@@ -13,4 +13,4 @@ class MockProvider(AgentProvider):
             f"System prompt: {prompt}\n"
             f"Input: {incoming}\n"
             "Response: This is a deterministic prototype response."
-        ), 0, 0, []
+        ), 0, 0, [], []
