@@ -1827,7 +1827,7 @@ pre {
   gap: 4px;
   padding: 4px;
   border: 1px solid var(--border-soft);
-  border-radius: var(--radius-pill);
+  border-radius: 10px;
   background: rgba(5, 10, 22, 0.46);
 }
 
