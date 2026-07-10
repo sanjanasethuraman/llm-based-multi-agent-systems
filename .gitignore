@@ -4,7 +4,6 @@ __pycache__/
 .pytest_cache/
 .pycache/
 node_modules/
-frontend/dist/
 data/*
 !data/primekg/
 !data/primekg/.gitignore

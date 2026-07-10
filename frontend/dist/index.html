@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Visual MAS Tool</title>
+    <script>
+      (function () {
+        try {
+          var storageKey = "visual-mas-theme";
+          var stored = window.localStorage.getItem(storageKey);
+          var theme = stored === "light" || stored === "dark"
+            ? stored
+            : window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches
+              ? "light"
+              : "dark";
+          document.documentElement.dataset.theme = theme;
+          document.documentElement.style.colorScheme = theme;
+        } catch (error) {
+          document.documentElement.dataset.theme = "dark";
+          document.documentElement.style.colorScheme = "dark";
+        }
+      })();
+    </script>
+    <script type="module" crossorigin src="/assets/index-DbjN-KXl.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-DbwMmiOG.css">
+  </head>
+  <body>
+    <div id="root"></div>
+  </body>
+</html>
