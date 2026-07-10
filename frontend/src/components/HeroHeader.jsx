@@ -1,4 +1,4 @@
-import { Database, FolderOpen, Gauge, GitBranch, Maximize2, Minimize2, Moon, Network, Play, Sparkles, Sun, Wrench } from "lucide-react";
+import { Database, FolderOpen, Gauge, GitBranch, Maximize2, Minimize2, Moon, Network, Play, Sun, Wrench } from "lucide-react";
 
 import ActionButton from "./ui/ActionButton.jsx";
 
@@ -42,9 +42,6 @@ export default function HeroHeader({
     <header className="hero-header">
       <nav className="product-nav" aria-label="Product navigation">
         <div className="product-brand">
-          <div className="product-brand__mark" aria-hidden="true">
-            <Sparkles size={18} />
-          </div>
           <div>
             <strong>FlowScope</strong>
             <span>Visual MAS Tool</span>

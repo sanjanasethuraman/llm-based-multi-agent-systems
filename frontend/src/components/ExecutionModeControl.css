@@ -59,7 +59,6 @@
   background-color: rgba(73, 214, 255, 0.14);
   border-color: rgba(110, 231, 255, 0.36);
   color: var(--text-main);
-  box-shadow: var(--glow-cyan);
 }
 
 .mode-btn:disabled {

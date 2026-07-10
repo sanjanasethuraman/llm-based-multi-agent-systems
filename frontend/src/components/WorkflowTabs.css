@@ -55,9 +55,7 @@
 }
 
 .workflow-tab.active {
-  background: linear-gradient(135deg, rgba(73, 214, 255, 0.16), rgba(139, 92, 246, 0.14));
   border-color: rgba(110, 231, 255, 0.38);
-  box-shadow: 0 0 24px rgba(73, 214, 255, 0.12);
 }
 
 :root[data-theme="light"] .workflow-tab {
