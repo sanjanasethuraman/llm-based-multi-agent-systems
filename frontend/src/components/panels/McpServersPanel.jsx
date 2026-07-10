@@ -7,6 +7,7 @@ import {
   Trash2,
   XCircle,
 } from "lucide-react";
+import "./McpServersPanel.css"
 
 function McpServersPanel({ servers, onConnect, onDisconnect, onRefresh }) {
   const [form, setForm] = useState({
@@ -56,17 +57,35 @@ function McpServersPanel({ servers, onConnect, onDisconnect, onRefresh }) {
       <div className="mcp-server-list">
         {servers.length === 0 && <p>No servers connected.</p>}
         {servers.map(server => (
-          <div key={server.id} className={`mcp-server-item ${server.connected ? "connected" : "offline"}`}>
-            <div>
-              <strong>{server.label}</strong>
-              <span className={`status-badge ${server.connected ? "completed" : "error"}`}>
-                {server.connected ? "Connected" : "Offline"}
-              </span>
-              <span style={{ opacity: 0.6, fontSize: 12 }}>{server.transport} | {server.id}</span>
+          <div 
+            key={server.id} 
+            className={`mcp-server-item ${server.connected ? "connected" : "offline"}`}
+          >
+            <div className="mcp-server-info">
+              <div className="mcp-server-header">
+                <strong>{server.label}</strong>
+
+                <span className={`status-badge ${server.connected ? "connected" : "offline"}`}>
+                  <span className="status-dot" />
+                  {server.connected ? "Connected" : "Offline"}
+                </span>
+              </div>
+
+              <div className="mcp-server-meta">
+                <span>{server.transport}</span>
+                <span className="separator">•</span>
+                <span>{server.id}</span>
+              </div>
             </div>
+
             {server.id !== "internal" && (
-              <button type="button" onClick={() => onDisconnect(server.id)}>
-                <Trash2 size={14} /> Disconnect
+              <button 
+                className="disconnect-button"
+                type="button" 
+                onClick={() => onDisconnect(server.id)}
+              >
+                <Trash2 size={14} />
+                Disconnect
               </button>
             )}
           </div>
@@ -87,7 +106,7 @@ function McpServersPanel({ servers, onConnect, onDisconnect, onRefresh }) {
               <input placeholder="Acme Weather API" value={form.label} onChange={e => updateField("label", e.target.value)} />
             </label>
             <div className="field-group">
-              <span>Transport</span>
+              <span>Connection Type</span>
               <div className="segmented">
                 {["http", "stdio"].map(t => (
                   <button

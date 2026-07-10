@@ -1,5 +1,5 @@
 import { BrainCircuit, Database, Eye, GitBranch, Network, Play, Search, Wrench } from "lucide-react";
-
+import { useState } from "react";
 import ActionButton from "./ui/ActionButton.jsx";
 import StatusPill from "./ui/StatusPill.jsx";
 
@@ -53,9 +53,11 @@ export default function GuidedDemoPanel({
 }) {
   const exampleNames = new Set(examples.map((example) => example.name));
   const activeStep = workflowLoaded ? 2 : 1;
+  const [open, setOpen] = useState(false);
 
   return (
-    <section className="guided-demo-panel">
+    <section className={`guided-demo-panel ${open ? "open" : ""}`}>
+      
       <div className="guided-demo-main">
         <div className="guided-demo-heading">
           <span><Search size={14} aria-hidden="true" /> Guided demo</span>
@@ -72,48 +74,59 @@ export default function GuidedDemoPanel({
           ))}
         </div>
       </div>
-
-      <div className="quick-start-grid">
-        {quickStarts.map((card) => {
-          const Icon = card.icon;
-          const available = exampleNames.has(card.key);
-          return (
-            <article className={`quick-start-card ${card.accent}`} key={card.key}>
-              <div className="quick-start-icon"><Icon size={18} aria-hidden="true" /></div>
-              <div>
-                <h3>{card.title}</h3>
-                <p>{card.description}</p>
-              </div>
-              <div className="quick-start-actions">
-                <ActionButton variant="secondary" disabled={!available} onClick={() => onLoadExample(card.key)}>
-                  Load this demo
-                </ActionButton>
-                <ActionButton icon={Play} variant="primary" onClick={onRunWorkflow}>
-                  Run now
-                </ActionButton>
-                {card.key.includes("primekg") ? (
-                  <ActionButton icon={Network} variant="ghost" onClick={onOpenGraph}>
-                    Open graph
+      <button
+        className="action-button guided-demo-header"
+        onClick={() => setOpen(!open)}
+        aria-expanded={open}
+      >
+        <span>
+        {open ? "Hide guided demo" : "Continue guided demo"}
+        </span>
+      </button>
+      
+      <section className={`guided-demo-content ${open ? "expanded" : ""}`}>
+        <div className="quick-start-grid">
+          {quickStarts.map((card) => {
+            const Icon = card.icon;
+            const available = exampleNames.has(card.key);
+            return (
+              <article className={`quick-start-card ${card.accent}`} key={card.key}>
+                <div className="quick-start-icon"><Icon size={18} aria-hidden="true" /></div>
+                <div>
+                  <h3>{card.title}</h3>
+                  <p>{card.description}</p>
+                </div>
+                  <div className="quick-start-actions">
+                  <ActionButton variant="secondary" disabled={!available} onClick={() => onLoadExample(card.key)}>
+                    Load this demo
                   </ActionButton>
-                ) : (
-                  <ActionButton icon={Eye} variant="ghost" onClick={onOpenEvidence}>
-                    View evidence
+                  <ActionButton icon={Play} variant="primary" onClick={onRunWorkflow}>
+                    Run now
                   </ActionButton>
-                )}
-              </div>
-            </article>
-          );
-        })}
-      </div>
+                  {card.key.includes("primekg") ? (
+                    <ActionButton icon={Network} variant="ghost" onClick={onOpenGraph}>
+                      Open graph
+                    </ActionButton>
+                  ) : (
+                    <ActionButton icon={Eye} variant="ghost" onClick={onOpenEvidence}>
+                      View evidence
+                    </ActionButton>
+                  )}
+                </div>
+              </article>
+            );
+          })}
+        </div>
 
-      <div className="demo-ready-checklist" aria-label="Demo ready checklist">
-        {checklist.map((item) => (
-          <StatusPill key={item.label} status={item.ready ? "success" : item.warning ? "warning" : "neutral"}>
-            <span>{item.label}</span>
-            <strong>{item.ready ? "ready" : item.warning ? "check" : "pending"}</strong>
-          </StatusPill>
-        ))}
-      </div>
+        <div className="demo-ready-checklist" aria-label="Demo ready checklist">
+          {checklist.map((item) => (
+            <StatusPill key={item.label} status={item.ready ? "success" : item.warning ? "warning" : "neutral"}>
+              <span>{item.label}</span>
+              <strong>{item.ready ? "ready" : item.warning ? "check" : "pending"}</strong>
+            </StatusPill>
+          ))}
+        </div>
+      </section>
     </section>
   );
 }

@@ -1004,25 +1004,6 @@ function WorkflowApp() {
 
   return (
     <AppShell presentationMode={presentationMode} theme={theme}>
-      <HeroHeader
-        examples={examples}
-        theme={theme}
-        presentationMode={presentationMode}
-        selectedExample={selectedExample}
-        statusMessage={statusMessage}
-        onCheckStatus={checkSystemStatus}
-        onExportPython={exportPythonFile}
-        onGeneratePython={generatePython}
-        onLoadDemo={loadDemoWorkflow}
-        onLoadSaved={loadSavedWorkflow}
-        onOpenKnowledgeGraph={openKnowledgeGraph}
-        onTogglePresentationMode={() => setPresentationMode((value) => !value)}
-        onToggleTheme={toggleTheme}
-        onRunWorkflow={runWorkflow}
-        onSaveWorkflow={saveWorkflow}
-        onSelectExample={setSelectedExample}
-      />
-
       <DemoStatusBar
         backendKnown={backendKnown}
         collections={collections}
@@ -1041,7 +1022,24 @@ function WorkflowApp() {
         onOpenGraph={openKnowledgeGraph}
         onRunWorkflow={runWorkflow}
       />
-
+      <HeroHeader
+        examples={examples}
+        theme={theme}
+        presentationMode={presentationMode}
+        selectedExample={selectedExample}
+        statusMessage={statusMessage}
+        onCheckStatus={checkSystemStatus}
+        onExportPython={exportPythonFile}
+        onGeneratePython={generatePython}
+        onLoadDemo={loadDemoWorkflow}
+        onLoadSaved={loadSavedWorkflow}
+        onOpenKnowledgeGraph={openKnowledgeGraph}
+        onTogglePresentationMode={() => setPresentationMode((value) => !value)}
+        onToggleTheme={toggleTheme}
+        onRunWorkflow={runWorkflow}
+        onSaveWorkflow={saveWorkflow}
+        onSelectExample={setSelectedExample}
+      />
       <div className="workflow-tabs-section">
         <WorkflowTabs
           tabs={tabs}
@@ -1102,52 +1100,12 @@ function WorkflowApp() {
         }
       />
 
-      <RagPanel
-        collections={collections}
-        recentDocuments={recentDocuments}
-        form={ragForm}
-        graphStatus={graphStatus}
-        ingestStatus={ingestStatus}
-        ollamaStatus={ollamaStatus}
-        onFormChange={setRagForm}
-        onRefreshGraphStatus={refreshGraphStatus}
-        onSeedBiomedicalGraph={seedBiomedicalGraph}
-        onIngest={ingestDocuments}
-        onRefreshCollections={refreshCollections}
-        dynamicVectorBackendOptions={dynamicVectorBackendOptions}
-      />
-
-      <PrimeKGPanel
-        form={primekgForm}
-        status={primekgStatus}
-        preview={primekgPreview}
-        importSummary={primekgImportSummary}
-        graph={primekgGraph}
-        retrievals={retrievals}
-        loading={primekgLoading}
-        error={primekgError}
-        onFormChange={setPrimekgForm}
-        onRefreshStatus={refreshPrimekgStatus}
-        onPreview={previewPrimekgSubgraph}
-        onImport={importPrimekgSubgraph}
-        onFilterAndImport={filterAndImportPrimekgSubgraph}
-        onLoadGraph={loadPrimekgGraph}
-        presentationMode={presentationMode}
-      />
-
       <section className="post-kg-console" aria-label="Workflow evidence and output console">
         <div className="post-kg-console__heading">
           <span>Execution console</span>
           <h2>Outputs, Evidence, and Tool Activity</h2>
           <p>Review workflow results, retrieved context, MCP calls, and generated code after exploring the knowledge graph.</p>
         </div>
-
-        <McpServersPanel
-          servers={mcpServers}
-          onConnect={connectMcpServer}
-          onDisconnect={disconnectMcpServer}
-          onRefresh={refreshMcpTools}
-        />
 
         <ResultPanels
           output={output}
@@ -1187,6 +1145,45 @@ function WorkflowApp() {
           <pre id="generated-code">{generatedCode}</pre>
         </section>
       </section>
+
+      <RagPanel
+        collections={collections}
+        recentDocuments={recentDocuments}
+        form={ragForm}
+        graphStatus={graphStatus}
+        ingestStatus={ingestStatus}
+        ollamaStatus={ollamaStatus}
+        onFormChange={setRagForm}
+        onRefreshGraphStatus={refreshGraphStatus}
+        onSeedBiomedicalGraph={seedBiomedicalGraph}
+        onIngest={ingestDocuments}
+        onRefreshCollections={refreshCollections}
+        dynamicVectorBackendOptions={dynamicVectorBackendOptions}
+      />
+
+      <PrimeKGPanel
+        form={primekgForm}
+        status={primekgStatus}
+        preview={primekgPreview}
+        importSummary={primekgImportSummary}
+        graph={primekgGraph}
+        retrievals={retrievals}
+        loading={primekgLoading}
+        error={primekgError}
+        onFormChange={setPrimekgForm}
+        onRefreshStatus={refreshPrimekgStatus}
+        onPreview={previewPrimekgSubgraph}
+        onImport={importPrimekgSubgraph}
+        onFilterAndImport={filterAndImportPrimekgSubgraph}
+        onLoadGraph={loadPrimekgGraph}
+        presentationMode={presentationMode}
+      />
+      <McpServersPanel
+          servers={mcpServers}
+          onConnect={connectMcpServer}
+          onDisconnect={disconnectMcpServer}
+          onRefresh={refreshMcpTools}
+        />
     </AppShell>
   );
 }
