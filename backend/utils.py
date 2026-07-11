@@ -114,6 +114,32 @@ def log_node(node_id, context, message, status="info", node_type=None):
     })
     return context["nodeLogs"][node_id]
 
+def get_all_tools(nodes, edges) -> list[dict]:
+    """Return a list of all tool and sub-agent nodes in the workflow."""
+    tools = []
+    for node_id, node in nodes.items() if isinstance(nodes, dict) else ((n.get("id"), n) for n in nodes):
+        if not isinstance(node, dict):
+            continue
+        if node.get("type") == "tool":
+            config = node.get("config", {})
+            tools.append({
+                "type": "tool",
+                "node_id": node_id,
+                "server_id": config.get("serverId", "internal"),
+                "tool_name": config.get("toolName") or config.get("toolType"),
+                "config": config,
+            })
+        elif node.get("type") == "sub_agent":
+            config = node.get("config", {})
+            tools.append({
+                "type": "sub_agent",
+                "node_id": node_id,
+                "server_id": f"sub-agent-{node_id}",
+                "tool_name": f"run_{config.get('name', 'agent')}",
+                "config": config,
+            })
+    return tools
+
 def get_available_tools(node_id, edges, nodes) -> list[dict]:
     """Return a list of server_id & tool_name for tool & sub-agent nodes directly outgoing from `node_id`."""
     tools = []
@@ -167,3 +193,14 @@ def get_node_type(node_id, nodes):
         if isinstance(node, dict) and node.get("id") == node_id:
             return node.get("type", "unknown")
     return "unknown"
+
+def get_node_id_from_server_id(server_id, nodes):
+    for node_id, node in nodes.items() if isinstance(nodes, dict) else ((n.get("id"), n) for n in nodes):
+        if not isinstance(node, dict):
+            continue
+        config = node.get("config", {})
+        if node.get("type") == "tool" and config.get("serverId") == server_id:
+            return node_id
+        elif node.get("type") == "sub_agent" and f"sub-agent-{node_id}" == server_id:
+            return node_id
+    return None
