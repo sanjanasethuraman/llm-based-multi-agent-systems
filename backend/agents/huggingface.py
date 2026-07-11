@@ -1,4 +1,4 @@
-import json, os, logging
+import json, os, logging, time
 from urllib import error, parse, request
 
 from backend.mcp_registry import McpClientRegistry
@@ -15,10 +15,23 @@ class HuggingFaceProvider(AgentProvider):
     name = "huggingface"
 
     async def run(self, config, incoming, mcp_registry: McpClientRegistry, available_tools):
+        stats = {
+            "toolCalls": 0,
+            "subAgentCalls": 0,
+            "calledTools": [],
+            "providerLogs": [],
+            "totalDuration": 0,
+            "inputTokens": 0,
+            "outputTokens": 0,
+        }
+        sub_agent_stats = {}
         tool_calls = 0
         sub_agent_calls = 0
         called_tools = []
         provider_logs = []
+        total_duration = 0
+        input_tokens = 0
+        output_tokens = 0
         name = config.get("name", "Agent")
         model = config.get("model") or DEFAULT_HF_MODEL
         token = get_huggingface_token(config)
@@ -29,7 +42,7 @@ class HuggingFaceProvider(AgentProvider):
                 f"[{name} | huggingface unavailable]\n"
                 "No Hugging Face token was configured. Add a token in the agent settings "
                 "or set HF_TOKEN / HUGGING_FACE_API_TOKEN before starting the server.",
-                0, 0, called_tools, provider_logs
+                stats
             )
         provider_logs.append({
             "status": "info",
@@ -74,7 +87,8 @@ class HuggingFaceProvider(AgentProvider):
                 "model": model,
                 "messages": messages,
                 "temperature": float(config.get("temperature", 0.2)),
-                "max_tokens": int(config.get("maxNewTokens") or 512),
+                "max_tokens": int(config.get("maxNewTokens") or 1024),
+                "reasoning_effort": "none"
             }
             if hf_tools:
                 payload["tools"] = hf_tools
@@ -83,6 +97,7 @@ class HuggingFaceProvider(AgentProvider):
             logger.info(f"{name} calling HuggingFace model '{model}'")
 
             try:
+                start = time.perf_counter()
                 data = json.dumps(payload).encode("utf-8")
                 req = request.Request(
                     f"{base_url}/chat/completions",
@@ -95,18 +110,23 @@ class HuggingFaceProvider(AgentProvider):
                 )
                 with request.urlopen(req, timeout=120) as response:
                     result = json.loads(response.read().decode("utf-8"))
+                end = time.perf_counter()
+                total_duration += int((end-start) * 1_000_000_000)
             except error.HTTPError as exc:
                 detail = read_error_detail(exc)
-                return f"[{name} | huggingface error] HTTP {exc.code}: {detail}", tool_calls, sub_agent_calls, called_tools, provider_logs
+                return f"[{name} | huggingface error] HTTP {exc.code}: {detail}", stats
             except Exception as exc:
-                    return f"[{name} | huggingface error] {exc}", tool_calls, sub_agent_calls, called_tools, provider_logs
+                    return f"[{name} | huggingface error] {exc}", stats
 
             if not result.get("choices"):
-                return f"[{name} | huggingface] Empty response.", tool_calls, sub_agent_calls, called_tools, provider_logs
+                return f"[{name} | huggingface] Empty response.", stats
 
+            logger.info(f"Huggingface response: {result}")
             choice = result["choices"][0]
             message = choice.get("message", {})
             last_response = message.get("content") or ""
+            input_tokens += result["usage"]["prompt_tokens"]
+            output_tokens += result["usage"]["completion_tokens"]
 
             # append assistant message
             messages.append({"role": "assistant", "content": last_response, "tool_calls": message.get("tool_calls")})
@@ -174,8 +194,17 @@ class HuggingFaceProvider(AgentProvider):
                     "tool_call_id": tc.get("id", tool_name),
                     "content": json.dumps({"result": tool_result}),
                 })
-
-        return last_response, tool_calls, sub_agent_calls, called_tools, provider_logs
+        stats.update({
+            "toolCalls": tool_calls,
+            "subAgentCalls": sub_agent_calls,
+            "calledTools": called_tools,
+            "providerLogs": provider_logs,
+            "totalDuration": total_duration,
+            "inputTokens": input_tokens,
+            "outputTokens": output_tokens,
+            "subAgentStats": sub_agent_stats | {}
+        })
+        return last_response, stats
 
     def _to_hf_schema(self, tool) -> dict:
         """Convert an MCP Tool object to HuggingFace's expected tool schema."""
