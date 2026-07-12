@@ -5423,6 +5423,12 @@ pre {
 :root[data-theme="light"] .quick-start-card,
 :root[data-theme="light"] .guided-journey-card,
 :root[data-theme="light"] .workflow-tab,
+:root[data-theme="light"] .workflow-card,
+:root[data-theme="light"] .output-card,
+:root[data-theme="light"] .agent-row,
+:root[data-theme="light"] .stat,
+:root[data-theme="light"] .log-section,
+:root[data-theme="light"] .log-list div,
 :root[data-theme="light"] .selection-chip,
 :root[data-theme="light"] .primekg-type-badge,
 :root[data-theme="light"] .primekg-filter-group button,
@@ -5456,6 +5462,10 @@ pre {
 
 :root[data-theme="light"] .app-shell {
   background: var(--bg-page);
+}
+
+:root[data-theme="light"] .stat .value, :root[data-theme="light"] .log-header h5 {
+  color: black;
 }
 
 :root[data-theme="light"] .product-nav {

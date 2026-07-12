@@ -66,7 +66,7 @@ class OllamaProvider(AgentProvider):
         available = {(tool["server_id"], tool["tool_name"]) for tool in available_tools}
         logger.debug(f"available: {available}")
         ollama_tools = []
-        tool_map = {str : (str, ProxyToolClient)}
+        tool_map = {str : (str, any)}
         for server_id, client in mcp_registry.all_clients().items():
             for tool in await client.list_tools():
                 logger.debug(f"available tool: {server_id}: {tool.name}")
@@ -161,8 +161,9 @@ class OllamaProvider(AgentProvider):
                         sub_agent_stats[server_id]["totalDuration"] += sub_stats.get("totalDuration", 0)
                         sub_agent_stats[server_id]["inputTokens"] += sub_stats.get("inputTokens", 0)
                         sub_agent_stats[server_id]["outputTokens"] += sub_stats.get("outputTokens", 0)
-                       
-                        result_text = raw.get("result", "")
+
+                        self._merge_sub_agent_stats(sub_agent_stats, sub_stats.get("subAgentStats", {}))
+                        result_text = raw.get("result") or raw.get("text") or ""
                         provider_logs.append({
                             "status": "info",
                             "message": f"Sub-agent '{name}' completed with {sub_stats.get('toolCalls', 0)} tool call(s) and {sub_stats.get('subAgentCalls', 0)} sub-agent call(s).",
@@ -171,7 +172,6 @@ class OllamaProvider(AgentProvider):
                         result_text = json.dumps(raw)
                     else:
                         result_text = str(raw) if raw is not None else ""
-                    
                     messages.append({
                         "role": "tool",
                         "name": tool_call.function.name,
@@ -206,3 +206,20 @@ class OllamaProvider(AgentProvider):
                 "parameters": tool.inputSchema,
             }
         }
+    def _merge_sub_agent_stats(self, target: dict, sub_agent_stats_dict: dict):
+        """
+        Merge all sub-agent stats recursively
+        """
+        for nested_server_id, nested_stats in sub_agent_stats_dict.items():
+            target.setdefault(nested_server_id, {
+                "totalDuration": 0,
+                "inputTokens": 0,
+                "outputTokens": 0,
+            })
+            target[nested_server_id]["totalDuration"] += nested_stats.get("totalDuration", 0)
+            target[nested_server_id]["inputTokens"] += nested_stats.get("inputTokens", 0)
+            target[nested_server_id]["outputTokens"] += nested_stats.get("outputTokens", 0)
+
+            deeper = nested_stats.get("subAgentStats", {})
+            if deeper:
+                self._merge_sub_agent_stats(target, deeper)

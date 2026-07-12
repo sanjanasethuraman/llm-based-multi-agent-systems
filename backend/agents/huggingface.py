@@ -14,7 +14,7 @@ MAX_ITERATIONS = 10
 class HuggingFaceProvider(AgentProvider):
     name = "huggingface"
 
-    async def run(self, config, incoming, mcp_registry: McpClientRegistry, available_tools):
+    async def run(self, config, incoming, mcp_registry, available_tools):
         stats = {
             "toolCalls": 0,
             "subAgentCalls": 0,
@@ -70,7 +70,7 @@ class HuggingFaceProvider(AgentProvider):
                 except Exception:
                     messages.append({"role": "user", "content": str(incoming)})
 
-        # build tool map from registry — same as OllamaProvider
+        # build tool map from registry
         available = {(t["server_id"], t["tool_name"]) for t in available_tools}
         hf_tools = []
         tool_map = {}
@@ -111,12 +111,12 @@ class HuggingFaceProvider(AgentProvider):
                 with request.urlopen(req, timeout=120) as response:
                     result = json.loads(response.read().decode("utf-8"))
                 end = time.perf_counter()
-                total_duration += int((end-start) * 1_000_000_000)
+                total_duration += int((end - start) * 1_000_000_000)
             except error.HTTPError as exc:
                 detail = read_error_detail(exc)
                 return f"[{name} | huggingface error] HTTP {exc.code}: {detail}", stats
             except Exception as exc:
-                    return f"[{name} | huggingface error] {exc}", stats
+                return f"[{name} | huggingface error] {exc}", stats
 
             if not result.get("choices"):
                 return f"[{name} | huggingface] Empty response.", stats
@@ -128,8 +128,11 @@ class HuggingFaceProvider(AgentProvider):
             input_tokens += result["usage"]["prompt_tokens"]
             output_tokens += result["usage"]["completion_tokens"]
 
-            # append assistant message
-            messages.append({"role": "assistant", "content": last_response, "tool_calls": message.get("tool_calls")})
+            messages.append({
+                "role": "assistant",
+                "content": last_response,
+                "tool_calls": message.get("tool_calls"),
+            })
 
             calls = message.get("tool_calls") or []
             if not calls:
@@ -140,14 +143,13 @@ class HuggingFaceProvider(AgentProvider):
                 })
                 break
 
-            # process tool calls
             for tc in calls:
                 fn = tc.get("function", {})
                 tool_name = fn.get("name")
                 provider_logs.append({
-                        "status": "info",
-                        "message": f"Hugging Face requested tool '{tool_name}' with arguments {json.dumps(fn.get('arguments') or {})}.",
-                    })
+                    "status": "info",
+                    "message": f"Hugging Face requested tool '{tool_name}' with arguments {json.dumps(fn.get('arguments') or {})}.",
+                })
                 try:
                     arguments = json.loads(fn.get("arguments") or "{}")
                 except json.JSONDecodeError:
@@ -162,38 +164,81 @@ class HuggingFaceProvider(AgentProvider):
                         "content": json.dumps({"error": f"Tool {tool_name} is not connected to this agent."}),
                     })
                     provider_logs.append({
-                            "status": "warning",
-                            "message": f"Hugging Face requested unknown tool '{tool_name}'.",
-                        })
+                        "status": "warning",
+                        "message": f"Hugging Face requested unknown tool '{tool_name}'.",
+                    })
                     continue
 
                 server_id, client = tool_map[tool_name]
                 if str(server_id).startswith("sub-agent-"):
-                    sub_agent_calls += 1
                     provider_logs.append({
-                            "status": "info",
-                            "message": f"Hugging Face requested sub-agent tool '{tool_name}' on server '{server_id}'.",
-                        })
+                        "status": "info",
+                        "message": f"Hugging Face requested sub-agent tool '{tool_name}' on server '{server_id}'.",
+                    })
                 else:
                     tool_calls += 1
                     provider_logs.append({
-                            "status": "info",
-                            "message": f"Hugging Face requested tool '{tool_name}' on server '{server_id}'.",
-                        })
+                        "status": "info",
+                        "message": f"Hugging Face requested tool '{tool_name}' on server '{server_id}'.",
+                    })
 
                 called_tools.append({
                     "server_id": server_id,
                     "tool_name": tool_name,
                 })
+                
+                try:
+                    raw = await client.call_tool(tool_name, arguments)
+                except Exception as e:
+                    logger.error(f"Tool call {tool_name} failed: {e}")
+                    raw = {"error": str(e)}
 
-                tool_result = await client.call_tool(tool_name, arguments)
-                logger.info(f"Tool result: {tool_result}")
+                logger.info(f"Raw result from '{tool_name}': type={type(raw).__name__} value={str(raw)[:200]}")
+
+                # normalize JSON string from sub-agent if needed
+                if isinstance(raw, str):
+                    try:
+                        parsed = json.loads(raw)
+                        if isinstance(parsed, dict) and "text" in parsed and "stats" in parsed:
+                            raw = parsed
+                    except (json.JSONDecodeError, TypeError):
+                        pass
+
+                # handle structured result from sub-agents (contains stats)
+                if isinstance(raw, dict) and "stats" in raw:
+                    sub_stats = raw["stats"]
+                    tool_calls += sub_stats.get("toolCalls", 0)
+                    sub_agent_calls += sub_stats.get("subAgentCalls", 0) + 1
+                    called_tools.extend(sub_stats.get("calledTools", []))
+                    provider_logs.extend(sub_stats.get("providerLogs", []))
+                    sub_agent_stats.setdefault(server_id, {
+                        "totalDuration": 0,
+                        "inputTokens": 0,
+                        "outputTokens": 0,
+                    })
+                    sub_agent_stats[server_id]["totalDuration"] += sub_stats.get("totalDuration", 0)
+                    sub_agent_stats[server_id]["inputTokens"] += sub_stats.get("inputTokens", 0)
+                    sub_agent_stats[server_id]["outputTokens"] += sub_stats.get("outputTokens", 0)
+                    
+                    self._merge_sub_agent_stats(sub_agent_stats, sub_stats.get("subAgentStats", {}))
+
+
+                    result_text = raw.get("result", "")
+                    provider_logs.append({
+                        "status": "info",
+                        "message": f"Sub-agent '{tool_name}' completed with {sub_stats.get('toolCalls', 0)} tool call(s) and {sub_stats.get('subAgentCalls', 0)} sub-agent call(s).",
+                    })
+                elif isinstance(raw, dict) and "error" in raw:
+                    result_text = json.dumps(raw)
+                else:
+                    result_text = str(raw) if raw is not None else ""
 
                 messages.append({
                     "role": "tool",
                     "tool_call_id": tc.get("id", tool_name),
-                    "content": json.dumps({"result": tool_result}),
+                    "content": json.dumps({"result": result_text}),
                 })
+
         stats.update({
             "toolCalls": tool_calls,
             "subAgentCalls": sub_agent_calls,
@@ -202,12 +247,11 @@ class HuggingFaceProvider(AgentProvider):
             "totalDuration": total_duration,
             "inputTokens": input_tokens,
             "outputTokens": output_tokens,
-            "subAgentStats": sub_agent_stats | {}
+            "subAgentStats": sub_agent_stats | {},
         })
         return last_response, stats
 
     def _to_hf_schema(self, tool) -> dict:
-        """Convert an MCP Tool object to HuggingFace's expected tool schema."""
         return {
             "type": "function",
             "function": {
@@ -216,6 +260,24 @@ class HuggingFaceProvider(AgentProvider):
                 "parameters": tool.inputSchema,
             }
         }
+    
+    def _merge_sub_agent_stats(self, target: dict, sub_agent_stats_dict: dict):
+        """
+        Merge all sub-agent stats recursively
+        """
+        for nested_server_id, nested_stats in sub_agent_stats_dict.items():
+            target.setdefault(nested_server_id, {
+                "totalDuration": 0,
+                "inputTokens": 0,
+                "outputTokens": 0,
+            })
+            target[nested_server_id]["totalDuration"] += nested_stats.get("totalDuration", 0)
+            target[nested_server_id]["inputTokens"] += nested_stats.get("inputTokens", 0)
+            target[nested_server_id]["outputTokens"] += nested_stats.get("outputTokens", 0)
+
+            deeper = nested_stats.get("subAgentStats", {})
+            if deeper:
+                self._merge_sub_agent_stats(target, deeper)
 
 
 def get_huggingface_token(config=None):

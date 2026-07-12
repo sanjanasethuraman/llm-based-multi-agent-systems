@@ -52,7 +52,7 @@ const providerOptions = [
 const providerDefaults = {
   huggingface: {
     baseUrl: "https://router.huggingface.co/v1",
-    model: "mistralai/Mistral-7B-Instruct-v0.3",
+    model: "Qwen/Qwen3-8B",
   },
   ollama: {
     baseUrl: "http://127.0.0.1:11434",
@@ -1101,6 +1101,15 @@ function WorkflowApp() {
       />
 
       <section className="post-kg-console" aria-label="Workflow evidence and output console">
+        {comparisonReports.length > 0 && (
+          <section className="comparison-panel">
+            <div className="comparison-header">
+              <h2>Workflow Comparison Report</h2>
+              <p>{comparisonReports.length} workflows executed</p>
+            </div>
+            <ComparisonReport reports={comparisonReports} />
+          </section>
+        )}
         <div className="post-kg-console__heading">
           <span>Execution console</span>
           <h2>Outputs, Evidence, and Tool Activity</h2>
@@ -1126,16 +1135,6 @@ function WorkflowApp() {
           onLoadAnswerGraph={loadAnswerGraphFromEvidence}
           onOpenGraph={openKnowledgeGraph}
         />
-
-        {comparisonReports.length > 0 && (
-          <section className="comparison-panel">
-            <div className="comparison-header">
-              <h2>Workflow Comparison Report</h2>
-              <p>{comparisonReports.length} workflows executed</p>
-            </div>
-            <ComparisonReport reports={comparisonReports} />
-          </section>
-        )}
 
         <section className="code-panel">
           <div className="code-header">
@@ -1336,7 +1335,7 @@ function ConfigPanel({ node, validation, huggingFaceStatus, mcpTools, mcpServers
               {node.config.provider === "huggingface" || node.config.provider === "mock" ?  (
                 <input
                 value={node.config.model || ""}
-                placeholder={node.config.provider === "huggingface" ? "mistralai/Mistral-7B-Instruct-v0.3" : "llama3.2:1b"}
+                placeholder={node.config.provider === "huggingface" ? "Qwen/Qwen3-8B" : "llama3.2:1b"}
                 onChange={(event) => updateConfig({ model: event.target.value })}
                 />
               ) : (
@@ -1387,7 +1386,7 @@ function ConfigPanel({ node, validation, huggingFaceStatus, mcpTools, mcpServers
                   min="1"
                   step="1"
                   type="number"
-                  value={node.config.maxNewTokens ?? 512}
+                  value={node.config.maxNewTokens ?? 1024}
                   onChange={(event) => updateConfig({ maxNewTokens: Number(event.target.value) })}
                 />
               </label>
@@ -1600,11 +1599,27 @@ function ConfigPanel({ node, validation, huggingFaceStatus, mcpTools, mcpServers
             />
             <label>
               {node.config.provider === "huggingface" ? "Hugging Face Model ID" : "Model"}
-              <input
+              {node.config.provider === "huggingface" || node.config.provider === "mock" ?  (
+                <input
                 value={node.config.model || ""}
-                placeholder={node.config.provider === "huggingface" ? "mistralai/Mistral-7B-Instruct-v0.3" : "llama3.2:1b"}
+                placeholder={node.config.provider === "huggingface" ? "Qwen/Qwen3-8B" : "llama3.2:1b"}
                 onChange={(event) => updateConfig({ model: event.target.value })}
-              />
+                />
+              ) : (
+                <select
+                value={node.config.model || ""}
+                onChange={(event) => updateConfig({ model: event.target.value })}
+                >
+                  <option value="">
+                    Select model
+                  </option>
+                  {ollamaStatus.models?.map((model) => (
+                    <option key={model} value={model}>
+                      {model}
+                    </option>
+                  ))}
+                </select>
+              )}
             </label>
             {node.config.provider === "huggingface" && (
               <label>
@@ -1638,7 +1653,7 @@ function ConfigPanel({ node, validation, huggingFaceStatus, mcpTools, mcpServers
                   min="1"
                   step="1"
                   type="number"
-                  value={node.config.maxNewTokens ?? 512}
+                  value={node.config.maxNewTokens ?? 1024}
                   onChange={(event) => updateConfig({ maxNewTokens: Number(event.target.value) })}
                 />
               </label>
