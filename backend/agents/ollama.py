@@ -163,8 +163,7 @@ class OllamaProvider(AgentProvider):
                         sub_agent_stats[server_id]["outputTokens"] += sub_stats.get("outputTokens", 0)
 
                         self._merge_sub_agent_stats(sub_agent_stats, sub_stats.get("subAgentStats", {}))
-                       
-                        result_text = raw.get("result", "")
+                        result_text = raw.get("result") or raw.get("text") or ""
                         provider_logs.append({
                             "status": "info",
                             "message": f"Sub-agent '{name}' completed with {sub_stats.get('toolCalls', 0)} tool call(s) and {sub_stats.get('subAgentCalls', 0)} sub-agent call(s).",
@@ -173,7 +172,6 @@ class OllamaProvider(AgentProvider):
                         result_text = json.dumps(raw)
                     else:
                         result_text = str(raw) if raw is not None else ""
-                    
                     messages.append({
                         "role": "tool",
                         "name": tool_call.function.name,

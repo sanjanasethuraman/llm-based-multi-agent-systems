@@ -52,7 +52,7 @@ const providerOptions = [
 const providerDefaults = {
   huggingface: {
     baseUrl: "https://router.huggingface.co/v1",
-    model: "mistralai/Mistral-7B-Instruct-v0.3",
+    model: "Qwen/Qwen3-8B",
   },
   ollama: {
     baseUrl: "http://127.0.0.1:11434",
@@ -1336,7 +1336,7 @@ function ConfigPanel({ node, validation, huggingFaceStatus, mcpTools, mcpServers
               {node.config.provider === "huggingface" || node.config.provider === "mock" ?  (
                 <input
                 value={node.config.model || ""}
-                placeholder={node.config.provider === "huggingface" ? "mistralai/Mistral-7B-Instruct-v0.3" : "llama3.2:1b"}
+                placeholder={node.config.provider === "huggingface" ? "Qwen/Qwen3-8B" : "llama3.2:1b"}
                 onChange={(event) => updateConfig({ model: event.target.value })}
                 />
               ) : (
@@ -1387,7 +1387,7 @@ function ConfigPanel({ node, validation, huggingFaceStatus, mcpTools, mcpServers
                   min="1"
                   step="1"
                   type="number"
-                  value={node.config.maxNewTokens ?? 512}
+                  value={node.config.maxNewTokens ?? 1024}
                   onChange={(event) => updateConfig({ maxNewTokens: Number(event.target.value) })}
                 />
               </label>
@@ -1603,7 +1603,7 @@ function ConfigPanel({ node, validation, huggingFaceStatus, mcpTools, mcpServers
               {node.config.provider === "huggingface" || node.config.provider === "mock" ?  (
                 <input
                 value={node.config.model || ""}
-                placeholder={node.config.provider === "huggingface" ? "mistralai/Mistral-7B-Instruct-v0.3" : "llama3.2:1b"}
+                placeholder={node.config.provider === "huggingface" ? "Qwen/Qwen3-8B" : "llama3.2:1b"}
                 onChange={(event) => updateConfig({ model: event.target.value })}
                 />
               ) : (
@@ -1654,7 +1654,7 @@ function ConfigPanel({ node, validation, huggingFaceStatus, mcpTools, mcpServers
                   min="1"
                   step="1"
                   type="number"
-                  value={node.config.maxNewTokens ?? 512}
+                  value={node.config.maxNewTokens ?? 1024}
                   onChange={(event) => updateConfig({ maxNewTokens: Number(event.target.value) })}
                 />
               </label>
