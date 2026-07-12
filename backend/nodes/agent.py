@@ -15,7 +15,9 @@ class AgentNodeExecutor(NodeExecutor):
         registry = context["mcp_registry"]
         available_tools = get_available_tools(node["id"], context["edges"], context["nodes"])
         log_node(node["id"], context, f"Agent has access to {len(available_tools)} tool(s).", status="info", node_type=node.get("type"))
-        provider_name = config.get("provider", "mock")
+        provider_name = config.get("provider", "ollama")
+        if provider_name in {"mock", "api"}:
+            provider_name = "ollama"
         provider = get_agent_provider(provider_name)
 
         if not provider:

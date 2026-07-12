@@ -5,7 +5,9 @@ import re
 import time
 from pathlib import Path
 from urllib.parse import urlparse
-from urllib.parse import urlparse
+
+from backend.kg_semantics import classify_intent, relation_semantics, is_ontology_only
+from backend.kg_evidence import select_evidence, assess_evidence, STATUS_UNSUPPORTED_INTENT
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -14,6 +16,7 @@ DEFAULT_USER = "neo4j"
 DEFAULT_PASSWORD = "visualmas"
 DEFAULT_DATABASE = "neo4j"
 GRAPH_RAG_DISABLED_MESSAGE = "Neo4j Graph RAG is disabled."
+GRAPH_ANSWER_MODES = {"grounded", "hybrid"}
 
 BIOMEDICAL_TERMS = {
     "Disease": [
@@ -142,20 +145,36 @@ PRIMEKG_RELATION_KEYWORDS = {
 
 PRIMEKG_QUERY_STOPWORDS = {
     "about",
+    "also",
+    "and",
     "answer",
+    "are",
     "available",
     "biological",
+    "common",
     "connected",
     "connection",
     "connections",
+    "condition",
+    "conditions",
     "disease",
     "diseases",
+    "disorder",
+    "disorders",
     "drug",
     "drugs",
     "evidence",
     "explain",
+    "for",
+    "from",
     "graph",
+    "have",
+    "info",
+    "information",
+    "into",
+    "its",
     "linked",
+    "many",
     "mechanism",
     "mechanisms",
     "path",
@@ -163,15 +182,53 @@ PRIMEKG_QUERY_STOPWORDS = {
     "phenotype",
     "phenotypes",
     "question",
+    "related",
     "show",
+    "some",
     "symptom",
     "symptoms",
+    "tell",
+    "that",
+    "the",
+    "their",
+    "them",
+    "these",
+    "this",
+    "those",
+    "through",
+    "to",
     "treat",
     "treatment",
     "treatments",
     "what",
     "which",
     "with",
+    "ones",
+    "you",
+    "your",
+    "cause",
+    "causes",
+}
+
+PRIMEKG_GENERIC_DISEASE_NOUNS = {
+    "condition",
+    "conditions",
+    "disease",
+    "diseases",
+    "disorder",
+    "disorders",
+    "syndrome",
+    "syndromes",
+}
+
+# Query synonyms mapped to how PrimeKG actually names things (e.g. the CGRP
+# gene is stored as CALCA), so common shorthand still anchors real nodes.
+PRIMEKG_TERM_SYNONYMS = {
+    "cgrp": ["calca", "cgrp receptor complex"],
+    "calca": ["cgrp receptor complex"],
+    "her2": ["erbb2"],
+    "pd1": ["pdcd1"],
+    "pdl1": ["cd274"],
 }
 
 
@@ -419,6 +476,7 @@ def retrieve_graph_context(collection, query, top_k=5, hops=1, config=None):
 
     hops = max(1, min(int(hops or 1), 3))
     top_k = max(1, min(int(top_k or 5), 20))
+    answer_mode = normalize_graph_answer_mode((config or {}).get("graphAnswerMode") or (config or {}).get("answerMode"))
     primekg_retrieval = retrieve_primekg_paths_for_question(
         query,
         selected_disease=(config or {}).get("disease") or (config or {}).get("graphDisease"),
@@ -430,7 +488,7 @@ def retrieve_graph_context(collection, query, top_k=5, hops=1, config=None):
         checked_status=status,
     )
     if primekg_retrieval.get("status") == "ok" and primekg_retrieval.get("paths"):
-        return primekg_question_retrieval_result(primekg_retrieval)
+        return primekg_question_retrieval_result(primekg_retrieval, answer_mode=answer_mode)
 
     terms = query_terms(query)
     query_entities = extract_entities(query)
@@ -513,34 +571,39 @@ def retrieve_graph_context(collection, query, top_k=5, hops=1, config=None):
                     entityIds=list(entity_ids),
                     topK=top_k,
                 ).data()
+                entities = sorted(entities_by_id.values(), key=lambda item: (item.get("type", ""), item.get("name", "")))
+                relationships = sorted(
+                    relationships_by_key.values(),
+                    key=lambda item: (item.get("sourceName", ""), item.get("type", ""), item.get("targetName", "")),
+                )
+                matches = graph_matches(chunk_rows)
+                context = format_graph_context(collection, entities, relationships, matches)
+                return {
+                    "context": context,
+                    "matches": matches,
+                    "graphEvidence": {
+                        "status": "available",
+                        "backend": "neo4j",
+                        "collection": collection,
+                        "queryTerms": terms,
+                        "seedEntities": seeds,
+                        "entities": entities,
+                        "relationships": relationships,
+                        "chunks": [row.get("chunk") for row in chunk_rows],
+                    },
+                    "graphBackend": "neo4j",
+                    "graphAnswerMode": answer_mode,
+                }
     except Exception as exc:
         failed_status = graph_store_status(config)
         failed_status["message"] = f"Neo4j graph retrieval failed: {exc}"
         failed_status["error"] = str(exc)
         return graph_unavailable_result(failed_status, "unavailable")
 
-    entities = sorted(entities_by_id.values(), key=lambda item: (item.get("type", ""), item.get("name", "")))
-    relationships = sorted(
-        relationships_by_key.values(),
-        key=lambda item: (item.get("sourceName", ""), item.get("type", ""), item.get("targetName", "")),
-    )
-    matches = graph_matches(chunk_rows)
-    context = format_graph_context(collection, entities, relationships, matches)
-    return {
-        "context": context,
-        "matches": matches,
-        "graphEvidence": {
-            "status": "available",
-            "backend": "neo4j",
-            "collection": collection,
-            "queryTerms": terms,
-            "seedEntities": seeds,
-            "entities": entities,
-            "relationships": relationships,
-            "chunks": [row.get("chunk") for row in chunk_rows],
-        },
-        "graphBackend": "neo4j",
-    }
+
+def normalize_graph_answer_mode(value):
+    mode = str(value or "grounded").strip().lower()
+    return mode if mode in GRAPH_ANSWER_MODES else "grounded"
 
 
 def retrieve_primekg_paths(query, disease=None, top_k=5, max_depth=2, allowed_node_types=None, config=None, checked_status=None):
@@ -597,6 +660,13 @@ def retrieve_primekg_paths_for_question(
     max_paths = max(1, min(int(max_paths or 20), 50))
     query = query or ""
     selected_disease = (selected_disease or "").strip()
+    intent_info = classify_intent(query)
+    mechanism_requested = any(
+        token in normalize_name(query)
+        for token in ("mechanism", "mechanisms", "pathway", "pathways", "gene", "genes", "protein", "proteins", "through")
+    )
+    if intent_info.primary in {"drug_disease_association", "treatment_indication", "contraindication"} and not mechanism_requested:
+        max_depth = 1
 
     if not status.get("enabled") or not status.get("connected"):
         return empty_primekg_question_result(
@@ -625,18 +695,10 @@ def retrieve_primekg_paths_for_question(
         )
 
     detected_entities = detection.get("detectedEntities", [])
-    seeds = [
-        {
-            "id": entity.get("id"),
-            "name": entity.get("name"),
-            "type": entity.get("node_type") or entity.get("type"),
-            "source": entity.get("source"),
-            "score": entity.get("score", 0),
-            "matchType": entity.get("matchType"),
-        }
-        for entity in detected_entities
-        if entity.get("id")
-    ][: min(max(top_k * 2, 6), 20)]
+    concepts = detection.get("concepts") or []
+    concept_results = detection.get("conceptResults") or []
+    seed_candidates = [seed_candidate_from_entity(entity) for entity in detected_entities if entity.get("id")]
+    seeds = diversify_primekg_seeds(seed_candidates, limit=min(max(top_k * 2, 6), 20))
     if not seeds:
         return empty_primekg_question_result(
             "empty",
@@ -649,10 +711,47 @@ def retrieve_primekg_paths_for_question(
 
     allowed_types = normalize_primekg_allowed_types(allowed_node_types)
     settings = neo4j_settings(config)
+    # Query paths per seed so each detected concept gets its own path budget;
+    # a single global query is dominated by whichever anchor has the most edges.
+    per_seed = max(5, (max_paths // max(1, len(seeds))) + 2)
+    resolution = {}
     try:
         with get_driver(config) as driver:
             with driver.session(database=settings["database"]) as session:
-                rows = query_primekg_path_rows(session, seeds, allowed_types, max_paths, max_depth)
+                try:
+                    from backend.kg_entity_resolution import resolve_mentions
+                    res = resolve_mentions(query, session)
+                    resolution = {
+                        "resolved": [r.as_dict() for r in res["resolved"]],
+                        "ambiguous": [r.as_dict() for r in res["ambiguous"]],
+                        "unresolved": [r.as_dict() for r in res["unresolved"]],
+                    }
+                except Exception:
+                    resolution = {}
+                rows = []
+                seen_seed_ids = set()
+                per_concept_stats = []
+                grouped = group_seeds_by_concept(seeds, concepts)
+                for concept, concept_seeds in grouped:
+                    concept_rows = []
+                    concept_path_count_before = len(rows)
+                    concept_entity_ids = []
+                    for seed in concept_seeds:
+                        seed_id = seed.get("id")
+                        if not seed_id or seed_id in seen_seed_ids:
+                            continue
+                        seen_seed_ids.add(seed_id)
+                        concept_entity_ids.append(seed_id)
+                        seed_rows = query_primekg_path_rows(session, [seed], allowed_types, per_seed, max_depth)
+                        concept_rows.extend(seed_rows)
+                        rows.extend(seed_rows)
+                    per_concept_stats.append({
+                        "concept": concept,
+                        "seedCount": len(concept_seeds),
+                        "queriedSeedIds": concept_entity_ids,
+                        "rawPathRows": len(concept_rows),
+                        "pathsAdded": len(rows) - concept_path_count_before,
+                    })
     except Exception as exc:
         return empty_primekg_question_result(
             "unavailable",
@@ -661,6 +760,7 @@ def retrieve_primekg_paths_for_question(
             f"PrimeKG graph path retrieval failed: {exc}",
             detected_entities=detected_entities,
             max_depth=max_depth,
+            coverage=primekg_empty_coverage_metadata(concepts, concept_results),
         )
 
     if not rows:
@@ -671,6 +771,7 @@ def retrieve_primekg_paths_for_question(
             "Detected PrimeKG entities, but no bounded evidence paths were found.",
             detected_entities=detected_entities,
             max_depth=max_depth,
+            coverage=primekg_empty_coverage_metadata(concepts, concept_results, per_concept_stats if 'per_concept_stats' in locals() else []),
         )
 
     return primekg_question_result_from_path_rows(
@@ -680,6 +781,9 @@ def retrieve_primekg_paths_for_question(
         selected_disease,
         max_paths=max_paths,
         max_depth=max_depth,
+        resolution=resolution,
+        concept_results=concept_results,
+        retrieval_stats_by_concept=per_concept_stats if 'per_concept_stats' in locals() else [],
     )
 
 
@@ -693,57 +797,78 @@ def detect_primekg_query_entities(query, selected_disease=None, limit=10, config
             "query": query or "",
             "selectedDiseaseHint": selected_disease or "",
             "detectedEntities": [],
+            "concepts": [],
+            "conceptResults": [],
             "message": status.get("message") or "Neo4j is not reachable for PrimeKG entity detection.",
         }
 
     query = query or ""
     selected_disease = (selected_disease or "").strip()
     limit = max(1, min(int(limit or 10), 50))
-    terms = primekg_detection_terms(query, selected_disease)
-    if not terms:
+    concepts = primekg_detection_concepts(query, selected_disease)
+    terms = [term for concept in concepts for term in concept.get("terms", [])]
+    if not concepts or not terms:
         return {
             "status": "empty",
             "query": query,
             "selectedDiseaseHint": selected_disease,
             "detectedEntities": [],
+            "concepts": concepts,
+            "conceptResults": [],
             "message": "No searchable biomedical terms were found in the question.",
         }
 
+    per_concept_limit = max(2, min(int((limit + max(1, len(concepts)) - 1) / max(1, len(concepts))) + 2, 12))
     settings = neo4j_settings(config)
     try:
         with get_driver(config) as driver:
             with driver.session(database=settings["database"]) as session:
+                concept_results = []
                 rows = []
-                if selected_disease:
-                    rows.extend(query_primekg_detection_rows(
+                for concept in concepts:
+                    concept_terms = concept.get("terms") or []
+                    concept_rows = query_primekg_detection_rows(
                         session,
-                        [normalize_name(selected_disease)],
-                        limit=min(max(limit, 5), 20),
-                        disease_only=True,
-                    ))
-                rows.extend(query_primekg_detection_rows(
-                    session,
-                    terms,
-                    limit=min(max(limit * 6, 20), 100),
-                    disease_only=False,
-                ))
+                        concept_terms,
+                        limit=min(max(per_concept_limit * 6, 12), 60),
+                        disease_only=concept.get("kind") == "disease_hint",
+                    )
+                    ranked = rank_primekg_detected_entities(
+                        concept_rows,
+                        concept_terms,
+                        selected_disease if concept.get("kind") == "disease_hint" else None,
+                        per_concept_limit,
+                    )
+                    for entity in ranked:
+                        entity["concept"] = concept["id"]
+                    rows.extend(concept_rows)
+                    concept_results.append({
+                        **concept,
+                        "entities": ranked,
+                        "matched": bool(ranked),
+                        "candidateCount": len(concept_rows),
+                    })
     except Exception as exc:
         return {
             "status": "unavailable",
             "query": query,
             "selectedDiseaseHint": selected_disease,
             "detectedEntities": [],
+            "concepts": concepts,
+            "conceptResults": [],
             "message": f"PrimeKG entity detection failed: {exc}",
         }
 
-    detected = rank_primekg_detected_entities(rows, terms, selected_disease, limit)
+    detected = merge_detected_entities_by_concept(concept_results, limit)
     if not detected:
         return {
             "status": "empty",
             "query": query,
             "selectedDiseaseHint": selected_disease,
             "detectedEntities": [],
-            "message": "No imported PrimeKG nodes matched the question. Import a relevant filtered subgraph or select a disease as a hint.",
+            "concepts": concepts,
+            "conceptResults": concept_results,
+            "message": "No PrimeKG nodes matched the question. Check that the complete PrimeKG dataset is loaded, or select a disease as a hint.",
         }
 
     return {
@@ -751,6 +876,8 @@ def detect_primekg_query_entities(query, selected_disease=None, limit=10, config
         "query": query,
         "selectedDiseaseHint": selected_disease,
         "detectedEntities": detected,
+        "concepts": concepts,
+        "conceptResults": concept_results,
         "message": None,
     }
 
@@ -762,12 +889,14 @@ def query_primekg_detection_rows(session, terms, limit=50, disease_only=False):
     node_type_filter = "AND coalesce(n.node_type, n.type, 'other') = 'disease'" if disease_only else ""
     query = f"""
     MATCH (n:PrimeNode)
-    WHERE any(term IN $terms WHERE
-        toLower(coalesce(n.name, '')) = term
-        OR toLower(coalesce(n.name, '')) STARTS WITH term
-        OR toLower(coalesce(n.name, '')) CONTAINS term
-        OR term CONTAINS toLower(coalesce(n.name, ''))
-    )
+    WHERE NOT toLower(coalesce(n.source, '')) CONTAINS 'fake-test-only'
+      AND NOT toLower(coalesce(n.name, '')) CONTAINS 'fake test data only'
+      AND any(term IN $terms WHERE
+          toLower(coalesce(n.name, '')) = term
+          OR (size(term) >= 4 AND toLower(coalesce(n.name, '')) STARTS WITH term)
+          OR (size(term) >= 4 AND toLower(coalesce(n.name, '')) CONTAINS term)
+          OR (size(toLower(coalesce(n.name, ''))) >= 5 AND term CONTAINS toLower(coalesce(n.name, '')))
+      )
     {node_type_filter}
     RETURN coalesce(n.prime_id, n.id) AS id,
            n.name AS name,
@@ -784,6 +913,7 @@ def primekg_detection_terms(query, selected_disease=None):
     terms = []
     if selected_disease:
         terms.append(normalize_name(selected_disease))
+    terms.extend(extract_primekg_concept_phrases(query or ""))
 
     normalized_query = normalize_name(query)
     if normalized_query:
@@ -800,7 +930,9 @@ def primekg_detection_terms(query, selected_disease=None):
         ]:
             cleaned = cleaned.replace(stop, " ")
         cleaned = normalize_name(cleaned)
-        if cleaned and len(cleaned) >= 3 and cleaned not in PRIMEKG_QUERY_STOPWORDS:
+        # Only keep a short residual phrase; the whole multi-word question as a
+        # "term" causes reverse-substring matches against tiny node names.
+        if cleaned and len(cleaned) >= 3 and len(cleaned.split()) <= 4 and cleaned not in PRIMEKG_QUERY_STOPWORDS:
             terms.append(cleaned)
 
     for token in re.findall(r"[A-Za-z][A-Za-z0-9+/-]{2,}", query or ""):
@@ -809,14 +941,161 @@ def primekg_detection_terms(query, selected_disease=None):
             terms.append(term)
 
     entities = extract_entities(query or "")
-    terms.extend(normalize_name(entity.get("name")) for entity in entities if entity.get("name"))
+    terms.extend(
+        term
+        for term in (normalize_name(entity.get("name")) for entity in entities if entity.get("name"))
+        if term and term not in PRIMEKG_QUERY_STOPWORDS and term.split()[0] not in PRIMEKG_QUERY_STOPWORDS
+    )
 
     unique_terms = []
     for term in terms:
         term = normalize_name(term)
         if term and term not in unique_terms:
             unique_terms.append(term)
-    return unique_terms[:16]
+
+    # Expand hyphenated tokens (e.g. "cgrp-related" -> "cgrp") and add synonyms
+    # so shorthand still anchors the node PrimeKG actually stores.
+    expanded = list(unique_terms)
+    for term in unique_terms:
+        for part in re.split(r"[^a-z0-9]+", term):
+            part = part.strip()
+            if len(part) >= 3 and part not in PRIMEKG_QUERY_STOPWORDS and part not in expanded:
+                expanded.append(part)
+        for synonym in PRIMEKG_TERM_SYNONYMS.get(term, []):
+            if synonym not in expanded:
+                expanded.append(synonym)
+    return expanded[:20]
+
+
+def primekg_detection_concepts(query, selected_disease=None):
+    concepts = []
+    seen = set()
+
+    def add_concept(label, terms, kind="query"):
+        clean_terms = []
+        for term in terms:
+            term = normalize_name(term)
+            if term and term not in PRIMEKG_QUERY_STOPWORDS and term not in clean_terms:
+                clean_terms.append(term)
+        if not clean_terms:
+            return
+        concept_id = normalize_name(label or clean_terms[0])
+        if concept_id in seen:
+            for concept in concepts:
+                if concept["id"] == concept_id:
+                    for term in clean_terms:
+                        if term not in concept["terms"]:
+                            concept["terms"].append(term)
+                    return
+        seen.add(concept_id)
+        concepts.append({"id": concept_id, "label": label or clean_terms[0], "terms": clean_terms, "kind": kind})
+
+    if selected_disease:
+        add_concept(normalize_name(selected_disease), [selected_disease], "disease_hint")
+
+    for phrase in extract_primekg_concept_phrases(query or ""):
+        add_concept(phrase, [phrase], "phrase")
+
+    for term in primekg_detection_terms(query, selected_disease=None):
+        base = normalize_name(term)
+        if not base or base in PRIMEKG_QUERY_STOPWORDS:
+            continue
+        synonym_terms = [base, *PRIMEKG_TERM_SYNONYMS.get(base, [])]
+        if base in {"cgrp", "calca", "cgrp receptor complex"}:
+            add_concept("cgrp", synonym_terms, "synonym_group")
+        elif base not in {part for concept in concepts for part in concept["terms"]}:
+            add_concept(base, synonym_terms, "term")
+
+    return concepts[:12]
+
+
+def merge_detected_entities_by_concept(concept_results, limit):
+    limit = max(1, min(int(limit or 10), 50))
+    queues = [list(result.get("entities") or []) for result in concept_results or []]
+    detected = []
+    seen_ids = set()
+    while len(detected) < limit and any(queues):
+        for queue in queues:
+            while queue:
+                entity = queue.pop(0)
+                entity_id = entity.get("id")
+                if entity_id in seen_ids:
+                    continue
+                seen_ids.add(entity_id)
+                detected.append(entity)
+                break
+            if len(detected) >= limit:
+                break
+    return detected
+
+
+def seed_candidate_from_entity(entity):
+    return {
+        "id": entity.get("id"),
+        "name": entity.get("name"),
+        "type": entity.get("node_type") or entity.get("type"),
+        "source": entity.get("source"),
+        "score": entity.get("score", 0),
+        "matchType": entity.get("matchType"),
+        "matchedTerm": entity.get("matchedTerm"),
+        "concept": entity.get("concept") or normalize_name(entity.get("matchedTerm") or entity.get("name") or ""),
+    }
+
+
+def group_seeds_by_concept(seeds, concepts):
+    order = [concept.get("id") for concept in concepts or [] if concept.get("id")]
+    grouped = {concept_id: [] for concept_id in order}
+    for seed in seeds or []:
+        concept = seed.get("concept") or normalize_name(seed.get("matchedTerm") or seed.get("name") or "")
+        grouped.setdefault(concept, [])
+        if concept not in order:
+            order.append(concept)
+        grouped[concept].append(seed)
+    return [(concept, grouped.get(concept, [])) for concept in order if grouped.get(concept)]
+
+
+def primekg_empty_coverage_metadata(concepts, concept_results, retrieval_stats_by_concept=None):
+    matched = [result["id"] for result in concept_results or [] if result.get("matched")]
+    detected = [concept["id"] for concept in concepts or [] if concept.get("id")]
+    unmatched = [concept for concept in detected if concept not in matched]
+    return {
+        "detectedConcepts": detected,
+        "matchedConcepts": matched,
+        "unmatchedConcepts": unmatched,
+        "unsupportedConcepts": unmatched,
+        "entitiesPerConcept": {
+            result["id"]: result.get("entities", [])
+            for result in concept_results or []
+        },
+        "retrievalStatsPerConcept": retrieval_stats_by_concept or [],
+        "fullyGrounded": False,
+        "partiallyGrounded": bool(matched),
+    }
+
+
+def extract_primekg_concept_phrases(query):
+    normalized = re.sub(r"[^a-z0-9+/-]+", " ", normalize_name(query or ""))
+    if not normalized:
+        return []
+    tokens = normalized.split()
+    phrases = []
+    seen = set()
+    for index, token in enumerate(tokens):
+        if token not in PRIMEKG_GENERIC_DISEASE_NOUNS:
+            continue
+        start = max(0, index - 3)
+        modifiers = [
+            item
+            for item in tokens[start:index]
+            if item not in (PRIMEKG_QUERY_STOPWORDS - PRIMEKG_GENERIC_DISEASE_NOUNS)
+            and item not in PRIMEKG_GENERIC_DISEASE_NOUNS
+        ]
+        for length in range(min(3, len(modifiers)), 0, -1):
+            phrase = normalize_name(" ".join([*modifiers[-length:], token]))
+            if phrase and phrase not in seen:
+                seen.add(phrase)
+                phrases.append(phrase)
+    return phrases
 
 
 def rank_primekg_detected_entities(rows, terms, selected_disease=None, limit=10):
@@ -831,7 +1110,7 @@ def rank_primekg_detected_entities(rows, terms, selected_disease=None, limit=10)
         match_type, match_score, matched_term = primekg_entity_match_score(name, terms, selected_term)
         if not match_type:
             continue
-        type_score = PRIMEKG_NODE_TYPE_WEIGHTS.get(node_type, 1) / 10
+        type_score = PRIMEKG_NODE_TYPE_WEIGHTS.get(node_type, 1) / 100
         selected_boost = 0.35 if selected_term and normalize_name(name) == selected_term and node_type == "disease" else 0
         generic_penalty = 0.2 if is_generic_primekg_entity_name(name) else 0
         score = min(1.0, round(match_score + type_score + selected_boost - generic_penalty, 4))
@@ -851,8 +1130,8 @@ def rank_primekg_detected_entities(rows, terms, selected_disease=None, limit=10)
     ranked = sorted(
         candidates.values(),
         key=lambda item: (
+            {"hint": 0, "exact": 1, "prefix": 2, "contains": 3}.get(item.get("matchType"), 9),
             -item.get("score", 0),
-            0 if item.get("node_type") == "disease" else 1,
             len(item.get("name") or ""),
             (item.get("name") or "").lower(),
         ),
@@ -873,11 +1152,11 @@ def primekg_entity_match_score(name, terms, selected_term=""):
         if not term or term in PRIMEKG_QUERY_STOPWORDS:
             continue
         if normalized == term:
-            candidate = ("exact", 0.9, term)
-        elif normalized.startswith(term) or term.startswith(normalized):
-            candidate = ("prefix", 0.7, term)
-        elif normalized in term or term in normalized:
-            candidate = ("contains", 0.5, term)
+            candidate = ("exact", 0.95, term)
+        elif len(term) >= 4 and (normalized.startswith(term) or term.startswith(normalized)):
+            candidate = ("prefix", 0.65, term)
+        elif len(term) >= 4 and len(normalized) >= 4 and (normalized in term or term in normalized):
+            candidate = ("contains", 0.45, term)
         else:
             continue
         if candidate[1] > best[1]:
@@ -900,6 +1179,8 @@ def find_primekg_seed_nodes(session, terms, disease, allowed_types, top_k):
             """
             MATCH (n:PrimeNode)
             WHERE n.node_type = 'disease'
+              AND NOT toLower(coalesce(n.source, '')) CONTAINS 'fake-test-only'
+              AND NOT toLower(coalesce(n.name, '')) CONTAINS 'fake test data only'
               AND any(term IN $terms WHERE toLower(n.name) CONTAINS term OR term CONTAINS toLower(n.name))
             RETURN n.prime_id AS id, n.name AS name, n.node_type AS type, n.source AS source
             ORDER BY size(n.name) DESC
@@ -915,6 +1196,8 @@ def find_primekg_seed_nodes(session, terms, disease, allowed_types, top_k):
         """
         MATCH (n:PrimeNode)
         WHERE n.node_type = 'disease'
+          AND NOT toLower(coalesce(n.source, '')) CONTAINS 'fake-test-only'
+          AND NOT toLower(coalesce(n.name, '')) CONTAINS 'fake test data only'
           AND any(term IN $terms WHERE toLower(n.name) CONTAINS term OR term CONTAINS toLower(n.name))
         RETURN n.prime_id AS id, n.name AS name, n.node_type AS type, n.source AS source
         ORDER BY size(n.name) DESC
@@ -930,6 +1213,8 @@ def find_primekg_seed_nodes(session, terms, disease, allowed_types, top_k):
         """
         MATCH (n:PrimeNode)
         WHERE n.node_type IN $allowedTypes
+          AND NOT toLower(coalesce(n.source, '')) CONTAINS 'fake-test-only'
+          AND NOT toLower(coalesce(n.name, '')) CONTAINS 'fake test data only'
           AND any(term IN $terms WHERE toLower(n.name) CONTAINS term OR term CONTAINS toLower(n.name))
         RETURN n.prime_id AS id, n.name AS name, n.node_type AS type, n.source AS source
         ORDER BY
@@ -958,7 +1243,14 @@ def query_primekg_path_rows(session, seeds, allowed_types, top_k, max_depth):
     MATCH (seed:PrimeNode)
     WHERE seed.prime_id IN $seedIds
     MATCH path = (seed)-[:PRIME_REL*1..{max_depth}]-(neighbor:PrimeNode)
-    WHERE all(n IN nodes(path) WHERE coalesce(n.node_type, 'other') IN $allowedTypes)
+    WHERE all(n IN nodes(path)
+      WHERE coalesce(n.node_type, 'other') IN $allowedTypes
+        AND NOT toLower(coalesce(n.source, '')) CONTAINS 'fake-test-only'
+        AND NOT toLower(coalesce(n.name, '')) CONTAINS 'fake test data only'
+    )
+      AND all(r IN relationships(path)
+        WHERE NOT toLower(coalesce(r.prime_source, '')) CONTAINS 'fake-test-only'
+      )
     WITH path, nodes(path) AS ns, relationships(path) AS rs
     WITH path, ns, rs,
       reduce(score = 0, n IN ns |
@@ -975,6 +1267,7 @@ def query_primekg_path_rows(session, seeds, allowed_types, top_k, max_depth):
       ) +
       reduce(score = 0, r IN rs |
         score + CASE
+          WHEN toLower(coalesce(r.display_relation, r.relation, '')) CONTAINS 'contraindication' THEN 1
           WHEN toLower(coalesce(r.display_relation, r.relation, '')) CONTAINS 'indication' THEN 8
           WHEN toLower(coalesce(r.display_relation, r.relation, '')) CONTAINS 'treat' THEN 8
           WHEN toLower(coalesce(r.display_relation, r.relation, '')) CONTAINS 'target' THEN 7
@@ -1085,65 +1378,152 @@ def primekg_result_from_path_rows(rows, seed_entities, query, query_terms_list, 
     }
 
 
-def primekg_question_result_from_path_rows(rows, detected_entities, query, selected_disease, max_paths=20, max_depth=2):
-    entities_by_id = {}
-    relationships_by_key = {}
-    paths = []
-    seen_path_text = set()
-    anchor_scores = {entity.get("id"): entity.get("score", 0) for entity in detected_entities or []}
+def primekg_question_result_from_path_rows(rows, detected_entities, query, selected_disease,
+                                           max_paths=20, max_depth=2, intent=None, resolution=None,
+                                           concept_results=None, retrieval_stats_by_concept=None):
+    intent_obj = intent or classify_intent(query)
+    anchor_scores = {entity.get("id"): float(entity.get("score", 0) or 0) for entity in detected_entities or []}
+    anchor_ids = [entity.get("id") for entity in detected_entities or [] if entity.get("id")]
 
-    ranked_rows = sorted(
-        rows or [],
-        key=lambda row: primekg_question_row_sort_key(row, anchor_scores),
-    )
-    for index, row in enumerate(ranked_rows):
+    # Build unique candidate paths from the raw rows.
+    seen_path_text = set()
+    candidate_paths = []
+    for index, row in enumerate(rows or []):
         nodes = row.get("nodes") or []
         relationships = row.get("relationships") or []
         path_text = format_primekg_path(nodes, relationships)
         if not path_text or path_text in seen_path_text:
             continue
         seen_path_text.add(path_text)
-        for node in nodes:
-            node_id = node.get("id") or node.get("prime_id")
-            if node_id:
-                entities_by_id[node_id] = node
-        for relationship in relationships:
-            rel_id = relationship.get("id")
-            key = rel_id or (
-                relationship.get("source"),
-                relationship.get("target"),
-                relationship.get("relation") or relationship.get("displayRelation"),
-            )
-            relationships_by_key[key] = relationship
-
-        score = normalize_primekg_path_score(row, nodes, relationships, anchor_scores)
-        paths.append({
+        candidate_paths.append({
             "pathId": stable_id("primekg-question-path", index, path_text),
-            "score": score,
             "nodes": nodes,
             "relationships": relationships,
             "pathText": path_text,
             "path_text": path_text,
-            "reason": primekg_path_reason(nodes, relationships, detected_entities),
             "length": row.get("length", len(relationships)),
         })
-        if len(paths) >= max_paths:
-            break
+
+    # Registry-driven selection: semantic dedup, per-anchor/relation/target caps,
+    # ontology/intent filtering, explicit score components. (Phases 5, 6, 8)
+    selected, rejected = select_evidence(
+        candidate_paths, intent_obj.primary, anchor_ids,
+        anchor_confidence={k: min(1.0, v) for k, v in anchor_scores.items()},
+        max_paths=max_paths,
+    )
+    used_broad_compound_fallback = False
+    if not selected and len(concept_results or []) > 1 and candidate_paths:
+        selected, fallback_rejected = select_evidence(
+            candidate_paths, "evidence_lookup", anchor_ids,
+            anchor_confidence={k: min(1.0, v) for k, v in anchor_scores.items()},
+            max_paths=max_paths,
+        )
+        rejected = rejected + fallback_rejected
+        used_broad_compound_fallback = bool(selected)
+
+    paths = []
+    for item in selected:
+        path = dict(item["path"])
+        path["score"] = round(max(0.0, min(1.0, item["score"])), 4)
+        path["scoreComponents"] = item["components"]
+        path["anchorId"] = item["anchor"]
+        path["direct"] = item["components"].get("directness", 0) >= 0.99
+        path["reason"] = primekg_path_reason(path["nodes"], path["relationships"], detected_entities)
+        paths.append(path)
+
+    entities_by_id, relationships_by_key = {}, {}
+    for path in paths:
+        for node in path["nodes"]:
+            node_id = node.get("id") or node.get("prime_id")
+            if node_id:
+                entities_by_id[node_id] = node
+        for relationship in path["relationships"]:
+            key = relationship.get("id") or (
+                relationship.get("source"), relationship.get("target"),
+                relationship.get("relation") or relationship.get("displayRelation"),
+            )
+            relationships_by_key[key] = relationship
 
     entities = sorted(entities_by_id.values(), key=lambda item: primekg_node_sort_key(item))
     relationships = sorted(
         relationships_by_key.values(),
         key=lambda item: (item.get("sourceName", ""), item.get("displayRelation") or item.get("relation") or "", item.get("targetName", "")),
     )
+
+    ambiguous = bool((resolution or {}).get("ambiguous"))
+    gate = assess_evidence(intent_obj.supported, bool(anchor_ids), ambiguous, selected, rejected, intent_obj.primary)
+    if used_broad_compound_fallback:
+        gate = {
+            "status": "partially_supported",
+            "reason": "No direct evidence matched the primary intent, but related PrimeKG evidence was retrieved for the independent concepts.",
+        }
+
+    ontology_only = sum(1 for p in paths if p["relationships"] and all(is_ontology_only(r.get("relation")) for r in p["relationships"]))
     stats = {
         "detectedEntityCount": len(detected_entities or []),
         "pathCount": len(paths),
         "entityCount": len(entities),
         "relationshipCount": len(relationships),
         "maxDepth": max_depth,
+        "directEvidence": sum(1 for p in paths if p.get("direct")),
+        "inferredEvidence": sum(1 for p in paths if not p.get("direct")),
+        "ontologyOnlyPaths": ontology_only,
+        "rejectedPaths": len(rejected),
         "byNodeType": count_by(entities, "type"),
         "byRelationType": count_by(relationships, "displayRelation", fallback_key="relation"),
+        "byConcept": retrieval_stats_by_concept or [],
     }
+    coverage = compute_primekg_concept_coverage(query, selected_disease, entities, paths)
+    if concept_results:
+        detected_concepts = [result["id"] for result in concept_results if result.get("id")]
+        concept_entity_ids = {
+            result["id"]: {
+                entity.get("id")
+                for entity in result.get("entities", [])
+                if entity.get("id")
+            }
+            for result in concept_results
+            if result.get("id")
+        }
+        concept_terms = {
+            result["id"]: [result["id"], *(result.get("terms") or [])]
+            for result in concept_results
+            if result.get("id")
+        }
+        paths_per_concept = {}
+        for concept in detected_concepts:
+            ids = concept_entity_ids.get(concept, set())
+            terms = concept_terms.get(concept, [concept])
+            paths_per_concept[concept] = sum(
+                1
+                for path in paths
+                if any((node.get("id") or node.get("prime_id")) in ids for node in path.get("nodes") or [])
+                or any(concept_matches_path(term, path) for term in terms)
+            )
+        matched_concepts = [
+            concept
+            for concept in detected_concepts
+            if concept in coverage.get("matchedConcepts", [])
+            or paths_per_concept.get(concept, 0) > 0
+        ]
+        coverage = {
+            **coverage,
+            "detectedConcepts": detected_concepts,
+            "matchedConcepts": sorted(set([*coverage.get("matchedConcepts", []), *matched_concepts])),
+            "unmatchedConcepts": [
+                concept for concept in detected_concepts
+                if concept not in set([*coverage.get("matchedConcepts", []), *matched_concepts])
+            ],
+            "entitiesPerConcept": {
+                result["id"]: result.get("entities", [])
+                for result in concept_results
+            },
+            "retrievalStatsPerConcept": retrieval_stats_by_concept or [],
+            "pathsPerConcept": {**coverage.get("pathsPerConcept", {}), **paths_per_concept},
+        }
+        coverage["unsupportedConcepts"] = coverage["unmatchedConcepts"]
+        coverage["fullyGrounded"] = bool(coverage["detectedConcepts"]) and not coverage["unmatchedConcepts"]
+        coverage["partiallyGrounded"] = bool(coverage["matchedConcepts"]) and bool(coverage["unmatchedConcepts"])
     return {
         "status": "ok" if paths else "empty",
         "query": query,
@@ -1155,13 +1535,225 @@ def primekg_question_result_from_path_rows(rows, detected_entities, query, selec
         "pathText": [path["pathText"] for path in paths],
         "path_text": [path["pathText"] for path in paths],
         "stats": stats,
-        "message": None if paths else "No bounded PrimeKG evidence paths were found.",
+        "intent": {"primary": intent_obj.primary, "all": intent_obj.all_intents,
+                   "supported": intent_obj.supported, "reason": intent_obj.reason},
+        "evidenceStatus": gate,
+        "entityResolution": resolution or {},
+        "coverage": coverage,
+        "conceptResults": concept_results or [],
+        "rejectedSample": [{"pathText": r["path"].get("pathText"), "reason": r["rejected"]} for r in rejected[:15]],
+        "message": None if paths else (gate.get("reason") or "No bounded PrimeKG evidence paths were found."),
     }
 
 
-def primekg_question_retrieval_result(question_result):
+def concept_matches_path(concept, path):
+    concept = normalize_name(concept)
+    if not concept:
+        return False
+    text = normalize_name(path.get("pathText") or path.get("path_text") or "")
+    if concept in text:
+        return True
+    for node in path.get("nodes") or []:
+        name = normalize_name(node.get("name") or "")
+        if concept in name or name in concept:
+            return True
+    return False
+
+
+def diversify_primekg_seeds(seed_candidates, limit):
+    """Round-robin seeds by matched concept, preserving score order within each."""
+    limit = max(1, int(limit or 1))
+    by_concept = {}
+    order = []
+    for seed in sorted(seed_candidates, key=lambda item: -float(item.get("score", 0) or 0)):
+        concept = normalize_name(seed.get("matchedTerm") or seed.get("name") or "")
+        if concept not in by_concept:
+            by_concept[concept] = []
+            order.append(concept)
+        by_concept[concept].append(seed)
+    diversified = []
+    seen_ids = set()
+    while len(diversified) < limit and any(by_concept[c] for c in order):
+        for concept in order:
+            if not by_concept[concept]:
+                continue
+            seed = by_concept[concept].pop(0)
+            if seed.get("id") in seen_ids:
+                continue
+            seen_ids.add(seed.get("id"))
+            diversified.append(seed)
+            if len(diversified) >= limit:
+                break
+    return diversified
+
+
+def primekg_query_concepts(query, selected_disease=None):
+    """Meaningful biomedical concepts from the question, for coverage reporting."""
+    concepts = []
+    for term in primekg_detection_terms(query, selected_disease):
+        term = normalize_name(term)
+        if not term or term in PRIMEKG_QUERY_STOPWORDS:
+            continue
+        if len(term) < 3 or len(term.split()) > 3:  # drop noise and whole-sentence phrases
+            continue
+        if term not in concepts:
+            concepts.append(term)
+    return concepts
+
+
+def compute_primekg_concept_coverage(query, selected_disease, entities, paths):
+    """Report which query concepts are/aren't backed by PrimeKG evidence."""
+    concepts = primekg_query_concepts(query, selected_disease)
+    entity_names = [normalize_name(entity.get("name") or "") for entity in entities or []]
+    path_node_names = [
+        [normalize_name(node.get("name") or "") for node in (path.get("nodes") or [])]
+        for path in paths or []
+    ]
+    matched, unmatched = [], []
+    paths_per_concept = {}
+    for concept in concepts:
+        entity_hit = any(concept in name or name in concept for name in entity_names if name)
+        hit_paths = sum(
+            1 for names in path_node_names if any(concept in name or name in concept for name in names if name)
+        )
+        paths_per_concept[concept] = hit_paths
+        if entity_hit or hit_paths:
+            matched.append(concept)
+        else:
+            unmatched.append(concept)
+    return {
+        "detectedConcepts": concepts,
+        "matchedConcepts": matched,
+        "unmatchedConcepts": unmatched,
+        "unsupportedConcepts": unmatched,
+        "pathsPerConcept": paths_per_concept,
+        "fullyGrounded": bool(concepts) and not unmatched,
+        "partiallyGrounded": bool(matched) and bool(unmatched),
+    }
+
+
+def primekg_coverage_advisory(coverage):
+    unmatched = coverage.get("unmatchedConcepts") or []
+    matched = coverage.get("matchedConcepts") or []
+    detected = coverage.get("detectedConcepts") or []
+    lines = ["Question coverage:"]
+    lines.append("Detected concepts: " + (", ".join(detected) if detected else "none detected."))
+    lines.append("Supported by retrieved graph evidence: " + (", ".join(matched) if matched else "none."))
+    lines.append("Unsupported or unmatched concepts: " + (", ".join(unmatched) if unmatched else "none."))
+    if unmatched:
+        lines.append(
+            "Required handling: explicitly state that no PrimeKG graph evidence was found for each unsupported or unmatched concept; "
+            "do not answer those parts from model knowledge."
+        )
+    else:
+        lines.append("Required handling: do not invent additional limitations beyond the retrieved evidence.")
+    return "\n".join(lines)
+
+
+GROUNDING_RULES = (
+    "GROUNDING RULES (obey exactly):\n"
+    "- Use ONLY the evidence paths below for KG-backed claims; cite the [Path N] you rely on.\n"
+    "- A path is graph evidence, not proof of a claim beyond the relation it states.\n"
+    "- Account for every detected concept in the question coverage section; never silently omit unsupported or unmatched concepts.\n"
+    "- Keep retrieved evidence and unsupported/unmatched concepts separate in the answer.\n"
+    "- If a concept is unsupported or unmatched, say that no PrimeKG graph evidence was found for it; do not answer it from pretrained knowledge.\n"
+    "- 'contraindication' means the drug is NOT a treatment; never present it as an indication/treatment.\n"
+    "- 'parent-child' (ontology) and 'associated with' are NOT treatment or causal claims.\n"
+    "- Do not convert association into causation, or connection into treatment.\n"
+    "- If the evidence status is not 'supported', state the limitation plainly and do not fill gaps "
+    "from general knowledge presented as PrimeKG evidence.\n"
+    "- Report unresolved/ambiguous entities and any unmatched parts of the question."
+)
+
+ANSWER_FORMAT_RULES = (
+    "ANSWER FORMAT (user-facing):\n"
+    "- Do not print the grounding rules, detected intent, raw retrieval status, or internal setup diagnostics.\n"
+    "- Write a short paragraph answering the question, then concise bullet points grouped by disease or concept.\n"
+    "- Include an 'Evidence gaps' note when unsupported or unmatched concepts are listed in question coverage.\n"
+    "- Cite evidence as [Path N] after each supported claim.\n"
+    "- Use plain labels like 'Migraine disorder' and 'Autoimmune disease'.\n"
+    "- Include a short note only when evidence is partial or a relation is a contraindication."
+)
+
+
+def graph_answer_mode_directive(answer_mode):
+    if normalize_graph_answer_mode(answer_mode) == "hybrid":
+        return (
+            "ANSWER MODE: hybrid.\n"
+            "- Answer from PrimeKG evidence first, using citations for graph-backed claims.\n"
+            "- You may add a separate section named 'Additional model knowledge (not PrimeKG evidence)' for unsupported concepts or useful context.\n"
+            "- Never cite or describe model knowledge as PrimeKG evidence.\n"
+            "- State 'Fallback used: yes' only if you use additional model knowledge; otherwise state 'Fallback used: no'."
+        )
+    return (
+        "ANSWER MODE: grounded.\n"
+        "- Answer only from retrieved PrimeKG evidence.\n"
+        "- Do not use additional model knowledge for unsupported or unmatched concepts.\n"
+        "- State 'Fallback used: no'."
+    )
+
+
+def _evidence_status_directive(gate, intent):
+    status = (gate or {}).get("status", "")
+    reason = (gate or {}).get("reason", "")
+    if status == STATUS_UNSUPPORTED_INTENT:
+        return (f"EVIDENCE STATUS: UNSUPPORTED QUESTION TYPE. {reason} "
+                "Tell the user PrimeKG cannot answer this fact type; do not fabricate an answer.")
+    if status in {"insufficient_evidence", "ambiguous_entity", "retrieval_failure"}:
+        return f"EVIDENCE STATUS: {status.upper()}. {reason} State this limitation for the affected concepts; do not guess."
+    if status == "conflicting_evidence":
+        return f"EVIDENCE STATUS: CONFLICTING. {reason} Present both sides; do not assert one."
+    if status == "partially_supported":
+        return f"EVIDENCE STATUS: PARTIAL. {reason} Answer only the supported part; explicitly flag every unsupported or unmatched concept."
+    return "EVIDENCE STATUS: SUPPORTED. Direct graph evidence is available for the primary intent."
+
+
+def primekg_question_retrieval_result(question_result, answer_mode="grounded"):
+    answer_mode = normalize_graph_answer_mode(answer_mode or question_result.get("answerMode") or question_result.get("graphAnswerMode"))
     paths = question_result.get("paths") or []
-    context = format_primekg_context(paths, question_result.get("entities", []), question_result.get("relationships", []), question_result.get("stats", {}))
+    entities = question_result.get("entities", [])
+    relationships = question_result.get("relationships", [])
+    intent = question_result.get("intent", {})
+    gate = question_result.get("evidenceStatus", {})
+    resolution = question_result.get("entityResolution", {})
+    coverage = question_result.get("coverage") or compute_primekg_concept_coverage(
+        question_result.get("query", ""),
+        question_result.get("selectedDiseaseHint", ""),
+        entities,
+        paths,
+    )
+    if "unsupportedConcepts" not in coverage:
+        coverage = {**coverage, "unsupportedConcepts": coverage.get("unmatchedConcepts", [])}
+
+    # Structured, grounded context (Phase 9): rules, status, then the evidence.
+    sections = [ANSWER_FORMAT_RULES, GROUNDING_RULES, graph_answer_mode_directive(answer_mode), _evidence_status_directive(gate, intent),
+                f"Detected intent: {intent.get('primary', 'evidence_lookup')} (supported={intent.get('supported', True)})."]
+    covered_text = normalize_name(" ".join(
+        [
+            *(entity.get("name", "") for entity in entities),
+            *(path.get("pathText", "") for path in paths),
+        ]
+    ))
+    unresolved = [
+        r.get("mention")
+        for r in resolution.get("unresolved", [])
+        if should_report_resolution_issue(r, covered_text)
+    ]
+    ambiguous = [
+        r.get("mention")
+        for r in resolution.get("ambiguous", [])
+        if should_report_resolution_issue(r, covered_text)
+    ]
+    if unresolved:
+        sections.append("Unresolved mentions (no PrimeKG entity): " + ", ".join(unresolved) + ".")
+    if ambiguous:
+        sections.append("Ambiguous mentions (do not guess which): " + ", ".join(ambiguous) + ".")
+    sections.append(format_primekg_context(paths, entities, relationships, question_result.get("stats", {})))
+    advisory = primekg_coverage_advisory(coverage)
+    if advisory:
+        sections.append(advisory.strip())
+    context = "\n\n".join(section for section in sections if section)
+
     matches = primekg_path_matches(paths)
     return {
         "context": context,
@@ -1173,18 +1765,49 @@ def primekg_question_retrieval_result(question_result):
             "selectedDiseaseHint": question_result.get("selectedDiseaseHint", ""),
             "detectedEntities": question_result.get("detectedEntities", []),
             "seedEntities": question_result.get("detectedEntities", []),
-            "entities": question_result.get("entities", []),
-            "relationships": question_result.get("relationships", []),
+            "entities": entities,
+            "relationships": relationships,
             "paths": paths,
             "path_text": question_result.get("pathText", []),
             "pathText": question_result.get("pathText", []),
             "stats": question_result.get("stats", {}),
+            "coverage": coverage,
+            "unsupportedConcepts": coverage.get("unsupportedConcepts", []),
+            "answerMode": answer_mode,
+            "fallbackAllowed": answer_mode == "hybrid",
+            "fallbackUsed": False,
+            "intent": intent,
+            "evidenceStatus": gate,
+            "entityResolution": resolution,
+            "rejectedSample": question_result.get("rejectedSample", []),
         },
         "graphBackend": "neo4j-primekg",
+        "graphAnswerMode": answer_mode,
     }
 
 
-def empty_primekg_question_result(status, query, selected_disease, message, detected_entities=None, max_depth=2):
+def should_report_resolution_issue(issue, covered_text):
+    mention = normalize_name((issue or {}).get("mention", ""))
+    if not mention or mention in PRIMEKG_QUERY_STOPWORDS or mention in PRIMEKG_GENERIC_DISEASE_NOUNS:
+        return False
+    if len(mention) <= 3:
+        return False
+    if mention in covered_text:
+        return False
+    return True
+
+
+def empty_primekg_question_result(status, query, selected_disease, message, detected_entities=None, max_depth=2, coverage=None):
+    coverage = coverage or {
+        "detectedConcepts": [],
+        "matchedConcepts": [],
+        "unmatchedConcepts": [],
+        "unsupportedConcepts": [],
+        "entitiesPerConcept": {},
+        "retrievalStatsPerConcept": [],
+        "fullyGrounded": False,
+        "partiallyGrounded": False,
+    }
     return {
         "status": status,
         "query": query or "",
@@ -1201,7 +1824,9 @@ def empty_primekg_question_result(status, query, selected_disease, message, dete
             "entityCount": 0,
             "relationshipCount": 0,
             "maxDepth": max_depth,
+            "byConcept": coverage.get("retrievalStatsPerConcept", []),
         },
+        "coverage": coverage,
         "message": message,
     }
 
@@ -1225,6 +1850,9 @@ def normalize_primekg_path_score(row, nodes, relationships, anchor_scores):
 
 def primekg_relation_relevance(relationship):
     label = normalize_name(relationship.get("displayRelation") or relationship.get("relation") or "")
+    # "contraindication" contains "indication"; don't let it score as a treatment.
+    if "contraindication" in label:
+        return 1
     score = 1
     for keyword, weight in PRIMEKG_RELATION_KEYWORDS.items():
         if keyword in label:
@@ -1269,8 +1897,8 @@ def format_primekg_context(paths, entities, relationships, stats):
     if paths:
         for index, path in enumerate(paths[:10], start=1):
             path_text = path.get("pathText") or path.get("path_text") or ""
-            if len(path_text) > 1200:
-                path_text = path_text[:1197].rstrip() + "..."
+            if len(path_text) > 430:
+                path_text = path_text[:427].rstrip() + "..."
             lines.append(f"[PrimeKG Path {index}] {path_text}")
     else:
         lines.append("No PrimeKG paths found.")

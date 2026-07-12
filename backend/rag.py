@@ -520,6 +520,9 @@ def retrieve_context(config, query):
         require_backend_available(vector_backend)
     graph_top_k = int(config.get("graphTopK") or top_k)
     graph_hops = int(config.get("graphHops") or 1)
+    graph_answer_mode = (config.get("graphAnswerMode") or "grounded").lower()
+    if graph_answer_mode not in {"grounded", "hybrid"}:
+        graph_answer_mode = "grounded"
 
     if not query.strip():
         return {
@@ -531,9 +534,15 @@ def retrieve_context(config, query):
 
     if retrieval_mode == "graph":
         graph_retrieval = retrieve_graph_context(collection, query, graph_top_k, graph_hops, config)
+        graph_evidence = dict(graph_retrieval.get("graphEvidence") or {})
+        graph_evidence.setdefault("answerMode", graph_retrieval.get("graphAnswerMode") or graph_answer_mode)
+        graph_evidence.setdefault("fallbackAllowed", graph_evidence.get("answerMode") == "hybrid")
+        graph_evidence.setdefault("fallbackUsed", False)
         return {
             **graph_retrieval,
+            "graphEvidence": graph_evidence,
             "retrievalMode": "graph",
+            "graphAnswerMode": graph_evidence.get("answerMode"),
             "vectorBackend": vector_backend,
             "embeddingBackend": None,
         }
@@ -552,9 +561,21 @@ def retrieve_context(config, query):
             vector_retrieval.get("matches", []),
             graph_retrieval.get("matches", []),
         )
+        graph_evidence = dict(graph_retrieval.get("graphEvidence") or {})
+        graph_evidence.setdefault("answerMode", graph_retrieval.get("graphAnswerMode") or graph_answer_mode)
+        graph_evidence.setdefault("fallbackAllowed", graph_evidence.get("answerMode") == "hybrid")
+        graph_evidence.setdefault("fallbackUsed", False)
+        graph_has_evidence = bool(
+            graph_evidence.get("paths")
+            or graph_evidence.get("relationships")
+            or graph_evidence.get("entities")
+        )
+        vector_context = vector_retrieval.get("context")
+        if graph_has_evidence and not vector_retrieval.get("matches"):
+            vector_context = ""
         context_parts = [
             part for part in [
-                vector_retrieval.get("context"),
+                vector_context,
                 graph_retrieval.get("context"),
             ]
             if part
@@ -565,8 +586,9 @@ def retrieve_context(config, query):
             "vectorBackend": vector_backend,
             "embeddingBackend": vector_retrieval.get("embeddingBackend"),
             "retrievalMode": "hybrid",
+            "graphAnswerMode": graph_retrieval.get("graphAnswerMode") or graph_answer_mode,
             "graphBackend": graph_retrieval.get("graphBackend"),
-            "graphEvidence": graph_retrieval.get("graphEvidence"),
+            "graphEvidence": graph_evidence,
         }
 
     return {**vector_retrieval, "retrievalMode": "vector"}

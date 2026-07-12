@@ -1,6 +1,6 @@
 {
   "label": "Review Pipeline",
-  "description": "Drafts an answer, transforms it with a tool, and emits both outputs.",
+  "description": "Drafts live release notes with a local LLM agent.",
   "workflow": {
     "nodes": [
       {
@@ -19,7 +19,7 @@
         "position": { "x": 310, "y": 155 },
         "config": {
           "name": "Release Writer",
-          "provider": "mock",
+          "provider": "ollama",
           "model": "llama3.2:1b",
           "baseUrl": "http://127.0.0.1:11434",
           "temperature": 0.3,
@@ -28,35 +28,16 @@
         }
       },
       {
-        "id": "tool-1",
-        "type": "tool",
-        "label": "Uppercase Check",
-        "position": { "x": 550, "y": 270 },
-        "config": {
-          "name": "Uppercase Check",
-          "toolType": "uppercase"
-        }
-      },
-      {
         "id": "output-1",
         "type": "output",
         "label": "Draft Output",
         "position": { "x": 800, "y": 155 },
         "config": {}
-      },
-      {
-        "id": "output-2",
-        "type": "output",
-        "label": "Tool Output",
-        "position": { "x": 800, "y": 300 },
-        "config": {}
       }
     ],
     "edges": [
       { "source": "input-1", "target": "agent-1" },
-      { "source": "agent-1", "target": "output-1" },
-      { "source": "agent-1", "target": "tool-1" },
-      { "source": "tool-1", "target": "output-2" }
+      { "source": "agent-1", "target": "output-1" }
     ]
   }
 }

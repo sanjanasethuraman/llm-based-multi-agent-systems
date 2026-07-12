@@ -7,9 +7,7 @@ def _load_default_provider(name):
 
         return HuggingFaceProvider()
     if name == "mock":
-        from .mock import MockProvider
-
-        return MockProvider()
+        name = "ollama"
     if name == "ollama":
         from .ollama import OllamaProvider
 

@@ -35,7 +35,7 @@
         "position": { "x": 560, "y": 205 },
         "config": {
           "name": "Graph Evidence Writer",
-          "provider": "mock",
+          "provider": "ollama",
           "model": "llama3.2:1b",
           "baseUrl": "http://127.0.0.1:11434",
           "temperature": 0.2,

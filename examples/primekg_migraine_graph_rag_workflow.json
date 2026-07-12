@@ -59,12 +59,12 @@
         "position": { "x": 575, "y": 165 },
         "config": {
           "name": "Biomedical Evidence Synthesizer",
-          "provider": "mock",
+          "provider": "ollama",
           "model": "llama3.2:1b",
           "baseUrl": "http://127.0.0.1:11434",
           "temperature": 0.2,
           "think": false,
-          "systemPrompt": "Answer using retrieved biomedical context and PrimeKG graph evidence. Prefer readable graph paths, name the disease, genes/proteins, mechanisms, phenotypes, and drugs when present. If PrimeKG or Neo4j is missing, say what setup step is missing. Include that this is biomedical research exploration, not medical advice."
+          "systemPrompt": "Write a human-readable biomedical research answer using PrimeKG graph evidence. Start with 1 short paragraph, then bullet points grouped by disease/concept. Cite paths like [Path 1]. Do not print grounding rules, detected intent, raw retriever status, unresolved mention dumps, or setup diagnostics. If graph evidence paths are present, never say setup, ingestion, retriever, or Neo4j is missing. For indication relations, say the drug is connected by PrimeKG indication evidence; for contraindication, explicitly say it is not treatment evidence. Include that this is biomedical research exploration, not medical advice."
         }
       },
       {

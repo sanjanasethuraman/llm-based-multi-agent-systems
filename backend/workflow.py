@@ -17,9 +17,16 @@ from backend.mcp_registry import McpClientRegistry, McpServerConfig
 logger = logging.getLogger(__name__)
 
 VALID_NODE_TYPES = {"input", "agent", "tool", "output", "retriever", "vector_db", "sub_agent"}
-VALID_AGENT_PROVIDERS = {"mock", "ollama", "huggingface", "api"}
+VALID_AGENT_PROVIDERS = {"ollama", "huggingface"}
 VALID_VECTOR_BACKENDS = {"auto", "chroma", "local-json-fallback", "faiss"}
 VALID_RETRIEVAL_MODES = {"vector", "graph", "hybrid"}
+VALID_GRAPH_ANSWER_MODES = {"grounded", "hybrid"}
+
+
+def normalize_agent_provider(provider):
+    if provider in {"mock", "api", None, ""}:
+        return "ollama"
+    return provider
 
 
 def validate_workflow(workflow):
@@ -98,6 +105,9 @@ def validate_workflow(workflow):
             if retrieval_mode not in VALID_RETRIEVAL_MODES:
                 errors.append(f"Retriever node {node_id} has unsupported retrieval mode: {retrieval_mode}.")
             if retrieval_mode in {"graph", "hybrid"}:
+                answer_mode = config.get("graphAnswerMode", "grounded")
+                if answer_mode not in VALID_GRAPH_ANSWER_MODES:
+                    errors.append(f"Retriever node {node_id} has unsupported Graph-RAG answer mode: {answer_mode}.")
                 warnings.append(
                     f"Retriever node {node_id} uses Neo4j Graph RAG; ensure Neo4j is running "
                     "and the biomedical demo graph or ingested graph index exists."
@@ -121,11 +131,9 @@ def validate_workflow(workflow):
                     f"Node {node_id} selects FAISS, which is scaffolded but not implemented."
                 )
         if node_type == "agent":
-            provider = config.get("provider", "mock")
+            provider = normalize_agent_provider(config.get("provider"))
             if provider not in VALID_AGENT_PROVIDERS:
                 errors.append(f"Agent node {node_id} has unsupported provider: {provider}.")
-            if provider == "api":
-                warnings.append(f"Agent node {node_id} uses the placeholder api provider.")
             if provider == "ollama" and not config.get("model"):
                 warnings.append(f"Agent node {node_id} uses Ollama without a model name.")
             if provider == "huggingface":
@@ -203,10 +211,15 @@ async def run_workflow(workflow, mcp_registry: McpClientRegistry):
             }
             continue
         else:
-            if inspect.iscoroutinefunction(executor.execute):
-                result, metadata = await executor.execute(node, context)
-            else:
-                result, metadata = executor.execute(node, context)
+            try:
+                if inspect.iscoroutinefunction(executor.execute):
+                    result, metadata = await executor.execute(node, context)
+                else:
+                    result, metadata = executor.execute(node, context)
+            except Exception as exc:
+                logger.exception(f"Node {node_id} ({node.get('type')}) failed")
+                result = ""
+                metadata = {"status": "error", "message": f"{node.get('type')} node failed: {exc}"}
             status = metadata.get("status", "completed")
             message = metadata.get("message", "")
             stats.update(metadata.get("stats", {}))
@@ -531,15 +544,19 @@ def cosine_similarity(left, right):
     return sum(a * b for a, b in zip(left, right))
 
 
+def normalize_agent_provider(provider):
+    if provider in {{"mock", "api", None, ""}}:
+        return "ollama"
+    return provider
+
+
 def run_agent(config, incoming):
-    name = config.get("name", "Agent")
-    system_prompt = config.get("systemPrompt", "You are a helpful assistant.")
-    provider = config.get("provider", "mock")
+    provider = normalize_agent_provider(config.get("provider"))
     if provider == "ollama":
-        return call_ollama(config, incoming)
+        return call_ollama({{**config, "provider": "ollama"}}, incoming)
     if provider == "huggingface":
         return call_huggingface(config, incoming)
-    return f"[{{name}} | {{provider}}]\\nSystem prompt: {{system_prompt}}\\nInput: {{incoming}}\\nResponse: generated prototype answer"
+    return call_ollama({{**config, "provider": "ollama"}}, incoming)
 
 
 def call_ollama(config, incoming):
@@ -671,26 +688,11 @@ def run_tool(config, incoming):
 
 
 def run_mcp_tool(config, incoming):
-    tool_id = config.get("toolId") or config.get("toolName") or "demo.lookup"
+    tool_id = config.get("toolId") or config.get("toolName") or ""
     arguments = parse_mcp_arguments(config.get("arguments", "{{}}"))
     if config.get("includeInput", True) and incoming and "input" not in arguments:
         arguments["input"] = incoming
-    if tool_id == "demo.weather":
-        city = arguments.get("city") or "Berlin"
-        unit = arguments.get("unit") or "celsius"
-        suffix = "C" if unit == "celsius" else "F"
-        temperature = 18 if unit == "celsius" else 64
-        return f"Weather for {{city}}: {{temperature}}{{suffix}}, light wind, good conditions for a field demo."
-    if tool_id == "demo.score":
-        text = arguments.get("text") or arguments.get("input") or incoming
-        words = len(str(text).split())
-        score = min(100, 60 + words)
-        return f"Presentation readiness score: {{score}}/100. Basis: {{words}} words of input context."
-    topic = arguments.get("topic") or arguments.get("input") or incoming or "visual multi-agent systems"
-    return (
-        f"Lookup result for {{topic}}: emphasize visual orchestration, transparent execution, "
-        "and provider/tool modularity."
-    )
+    return "No live MCP server is connected for this tool node. Connect a real MCP server before running this workflow."
 
 
 def parse_mcp_arguments(value):

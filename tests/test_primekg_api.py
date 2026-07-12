@@ -39,7 +39,7 @@ class PrimeKGApiTests(unittest.TestCase):
         with self.assertRaises(PrimeKGApiError):
             primekg_api.resolve_primekg_path("tests/fixtures/primekg_fake_sample.csv", ".csv")
 
-    def test_filter_preview_writes_bounded_project_local_output(self):
+    def test_filter_preview_is_deprecated_noop(self):
         preview = primekg_api.filter_preview({
             "csvPath": str(self.sample_csv),
             "disease": "Example Migraine",
@@ -48,39 +48,37 @@ class PrimeKGApiTests(unittest.TestCase):
             "maxRelationships": 20,
         })
 
-        self.assertTrue(preview["ok"])
-        self.assertEqual(preview["nodeCount"], 4)
-        self.assertEqual(preview["relationshipCount"], 3)
-        self.assertTrue(Path(preview["outputPath"]).exists())
-        self.assertTrue(str(Path(preview["outputPath"]).resolve()).startswith(str(self.primekg_dir.resolve())))
+        self.assertFalse(preview["ok"])
+        self.assertTrue(preview["deprecated"])
+        self.assertEqual(preview["status"], "deprecated")
+        self.assertEqual(preview["outputPath"], "")
+        self.assertFalse(self.preview_dir.exists())
 
-    def test_import_filtered_dry_run_returns_summary_and_updates_status(self):
-        preview = primekg_api.filter_preview({
-            "csvPath": str(self.sample_csv),
-            "disease": "Example Migraine",
-            "depth": 1,
-            "maxNodes": 10,
-            "maxRelationships": 20,
-        })
-
+    def test_import_filtered_is_deprecated_noop(self):
         summary = primekg_api.import_filtered({
-            "filteredPath": preview["outputPath"],
+            "filteredPath": "data/primekg/previews/old.json",
             "dryRun": True,
             "clearExistingPrimeKG": False,
         })
         status = primekg_api.primekg_status()
 
-        self.assertEqual(summary["status"], "dry_run")
-        self.assertEqual(summary["nodeCount"], 3)
-        self.assertEqual(status["lastImportSummary"]["status"], "dry_run")
+        self.assertEqual(summary["status"], "deprecated")
+        self.assertTrue(summary["deprecated"])
+        self.assertEqual(summary["nodesImported"], 0)
+        self.assertIsNone(status["lastImportSummary"])
 
-    def test_filter_preview_rejects_bad_filter_type(self):
-        with self.assertRaises(PrimeKGApiError):
-            primekg_api.filter_preview({
-                "csvPath": str(self.sample_csv),
-                "disease": "Example Migraine",
-                "allowedNodeTypes": {"bad": "shape"},
-            })
+    def test_filter_and_import_is_deprecated_noop(self):
+        result = primekg_api.filter_and_import({
+            "csvPath": str(self.sample_csv),
+            "disease": "Example Migraine",
+            "allowedNodeTypes": {"bad": "shape"},
+            "dryRun": False,
+        })
+
+        self.assertEqual(result["status"], "deprecated")
+        self.assertTrue(result["deprecated"])
+        self.assertEqual(result["preview"]["status"], "deprecated")
+        self.assertEqual(result["importSummary"]["status"], "deprecated")
 
     def test_visual_graph_from_rows_returns_bounded_viewer_shape(self):
         graph = primekg_api.visual_graph_from_rows(

@@ -306,7 +306,7 @@ export default function PrimeKGGraphExplorer({ graph, retrievals = [], loading =
   }
 
   if (!graph) {
-    return <GraphState title="No graph loaded" message="Import a filtered subgraph, then load the in-app graph view." />;
+    return <GraphState title="No graph loaded" message="Select a disease, then load a bounded read-only graph view." />;
   }
 
   if (!adapted.nodes.length) {

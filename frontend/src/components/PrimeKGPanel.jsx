@@ -1,4 +1,4 @@
-import { Box, CheckCircle2, CircleDashed, Database, FileText, HelpCircle, Network, RefreshCcw, ScanLine, Search, ServerCrash, Sparkles } from "lucide-react";
+import { CheckCircle2, CircleDashed, Database, FileText, HelpCircle, Network, RefreshCcw, Search, ServerCrash, Sparkles } from "lucide-react";
 import { useState } from "react";
 
 import DiseaseCombobox from "./DiseaseCombobox.jsx";
@@ -8,17 +8,12 @@ import PrimeKGGraphExplorer from "./PrimeKGGraphExplorer.jsx";
 export default function PrimeKGPanel({
   form,
   status,
-  preview,
-  importSummary,
   loading,
   graph,
   retrievals = [],
   error,
   onFormChange,
   onRefreshStatus,
-  onPreview,
-  onImport,
-  onFilterAndImport,
   onLoadGraph,
   presentationMode = false,
 }) {
@@ -26,14 +21,9 @@ export default function PrimeKGPanel({
   const updateField = (field, value) => onFormChange((current) => ({ ...current, [field]: value }));
   const neo4jConnected = Boolean(status?.neo4jConnected || status?.neo4j?.connected);
   const fileFound = Boolean(status?.fileExists);
-  const previewReady = Boolean(preview?.ok && preview?.outputPath);
-  const previewHasCapWarning = Boolean(preview?.warnings?.some((warning) => /cap reached|truncated/i.test(warning)));
-  const importDisabled = !neo4jConnected || !previewReady || loading === "import";
-  const filterImportDisabled = !neo4jConnected || !fileFound || !form.disease?.trim() || loading === "filterImport";
   const graphDisabled = !neo4jConnected || loading === "graph";
   const statusClass = neo4jConnected && fileFound ? "success" : fileFound ? "warning" : "neutral";
-  const matchedDisease = preview?.matchedDiseaseNodes?.[0];
-  const imported = Boolean(importSummary && (importSummary.status === "imported" || importSummary.status === "dry_run"));
+  const datasetComplete = Boolean(status?.datasetComplete);
   const graphLoaded = Boolean(graph?.status === "available" && (graph?.nodes?.length || graph?.stats?.nodeCount));
   const answerGraphLoaded = graphLoaded && graph?.mode === "answer";
   const selectedDisease = form.disease?.trim();
@@ -42,9 +32,8 @@ export default function PrimeKGPanel({
   const graphRelationshipCount = graph?.stats?.relationshipCount || graph?.relationships?.length || graph?.links?.length || 0;
   const workflowSteps = [
     { label: "Select disease", detail: selectedDisease || "Choose a disease", done: Boolean(selectedDisease) },
-    { label: "Preview", detail: previewReady ? `${preview.nodeCount || 0} nodes` : "bounded filter", done: previewReady },
-    { label: "Import", detail: imported ? "ready for retrieval" : "Neo4j subgraph", done: imported },
-    { label: "Load graph", detail: graphLoaded ? graphModeLabel : "in-app explorer", done: graphLoaded },
+    { label: "Find disease", detail: neo4jConnected ? "Neo4j lookup" : "waiting for Neo4j", done: neo4jConnected },
+    { label: "Load graph", detail: graphLoaded ? graphModeLabel : "bounded viewer", done: graphLoaded },
     { label: "Ask question", detail: retrievals.length ? "evidence available" : "Graph RAG ready", done: Boolean(retrievals.length) },
   ];
 
@@ -54,7 +43,7 @@ export default function PrimeKGPanel({
         <div className="primekg-hero-copy">
           <span><Sparkles size={14} /> Flagship biomedical graph workflow</span>
           <h2>Biomedical Knowledge Graph</h2>
-          <p>Explore disease-centered PrimeKG subgraphs and use graph evidence in RAG answers.</p>
+          <p>Explore bounded disease-centered views from the complete PrimeKG graph and use graph evidence in RAG answers.</p>
           <p className="primekg-mode-helper">
             Select a disease to explore its graph. Asking a question can also auto-detect relevant entities from the imported Neo4j graph.
           </p>
@@ -67,10 +56,10 @@ export default function PrimeKGPanel({
 
       <div className="primekg-status-grid" aria-label="PrimeKG demo readiness">
         <StatusCard icon={FileText} title="PrimeKG CSV" detail={fileFound ? `Found at ${status?.defaultCsvPath || "data/primekg/kg.csv"}` : "Missing from data/primekg/kg.csv"} ready={fileFound} />
-        <StatusCard icon={neo4jConnected ? Database : ServerCrash} title="Neo4j" detail={neo4jConnected ? "Connected and ready for imports" : status?.neo4j?.message || "Offline"} ready={neo4jConnected} />
+        <StatusCard icon={neo4jConnected ? Database : ServerCrash} title="Neo4j" detail={neo4jConnected ? "Connected to PrimeKG" : status?.neo4j?.message || "Offline"} ready={neo4jConnected} />
+        <StatusCard icon={Database} title="Dataset" detail={datasetComplete ? "Complete PrimeKG loaded" : "PrimeKG import not confirmed"} ready={datasetComplete} />
         <StatusCard icon={Search} title="Selected Disease" detail={selectedDisease || "No disease selected yet"} ready={Boolean(selectedDisease)} />
         <StatusCard icon={Network} title="Graph Loaded" detail={graphLoaded ? `${graphNodeCount} nodes, ${graphRelationshipCount} relationships` : "Not loaded yet"} ready={graphLoaded} />
-        <StatusCard icon={graphViewMode === "3d" ? Box : ScanLine} title="Current Mode" detail={graphLoaded ? graphModeLabel : `${graphModeLabel} ready`} ready={graphLoaded} />
       </div>
 
       <div className={`provider-note primekg-status-note ${statusClass}`}>
@@ -80,7 +69,7 @@ export default function PrimeKGPanel({
         </div>
         <div>Neo4j: {neo4jConnected ? "connected" : status?.neo4j?.message || "offline"}</div>
         {!fileFound ? <div>Place the dataset at data/primekg/kg.csv, then check status again.</div> : null}
-        {!neo4jConnected ? <div>{status?.neo4j?.setupHint || "Start Neo4j before importing or loading the graph view."}</div> : null}
+        {!neo4jConnected ? <div>{status?.neo4j?.setupHint || "Start Neo4j before loading the graph view."}</div> : null}
       </div>
 
       <div className="primekg-workflow-steps" aria-label="PrimeKG workflow steps">
@@ -99,13 +88,13 @@ export default function PrimeKGPanel({
       <div className="primekg-control-surface">
         <div className="primekg-control-heading">
           <span>Step 1</span>
-          <strong>Explore disease and preview a bounded graph</strong>
+          <strong>Explore a bounded read-only disease graph</strong>
         </div>
 
         <div className="primekg-grid">
           <div className="primekg-disease-field">
             <DiseaseCombobox label="Explore disease" value={form.disease} onChange={(value) => updateField("disease", value)} />
-            <p>This controls graph exploration and preview/import. Graph RAG questions can still auto-detect entities when this is blank.</p>
+            <p>This controls graph exploration only. Graph RAG questions can still auto-detect entities when this is blank.</p>
             <div className={`primekg-ask-hint ${form.disease?.trim() ? "hinted" : "auto"}`}>
               {form.disease?.trim() ? "Using selected disease as graph hint" : "Auto-detecting graph entities from question"}
             </div>
@@ -137,83 +126,17 @@ export default function PrimeKGPanel({
         </div>
 
         {Number(form.depth) === 3 ? (
-          <div className="provider-note warning compact">Depth 3 can grow quickly. The backend enforces caps before writing a preview.</div>
+          <div className="provider-note warning compact">Depth 3 can grow quickly. The backend enforces bounded graph caps.</div>
         ) : null}
 
         <div className="inline-actions primekg-actions">
-          <IconButton icon={Search} label={loading === "preview" ? "Previewing" : "Preview Subgraph"} variant="primary" onClick={onPreview} disabled={loading === "preview" || !form.disease?.trim()} />
-          <IconButton icon={Database} label={loading === "import" ? "Importing" : "Import Filtered Subgraph"} variant="secondary" onClick={onImport} disabled={importDisabled} />
-          <IconButton icon={Database} label={loading === "filterImport" ? "Filtering + Importing" : "Filter + Import"} variant="warning" onClick={onFilterAndImport} disabled={filterImportDisabled} />
-          <IconButton icon={Network} label={loading === "graph" ? "Loading Graph" : "Load In-App Graph"} variant="secondary" onClick={onLoadGraph} disabled={graphDisabled} />
+          <IconButton icon={Network} label={loading === "graph" ? "Loading Graph" : "Load In-App Graph"} variant="primary" onClick={onLoadGraph} disabled={graphDisabled} />
         </div>
       </div>
 
       {error ? <div className="provider-note warning">{error}</div> : null}
-      {!fileFound ? <PrimeKGEmptyState icon={FileText} title="PrimeKG kg.csv missing" message="Download PrimeKG and place kg.csv in data/primekg/kg.csv to enable disease search and filtering." /> : null}
-      {fileFound && !neo4jConnected ? <PrimeKGEmptyState icon={ServerCrash} title="Neo4j offline" message="You can preview CSV subgraphs, but import and graph loading require Neo4j to be running." /> : null}
-
-      {preview ? (
-        <div className="primekg-preview">
-          <div className="primekg-preview-heading">
-            <div>
-              <span>Preview result</span>
-              <h3>{matchedDisease?.name || form.disease || "Disease subgraph"}</h3>
-            </div>
-            <small>{preview.outputPath ? "Filtered JSON ready for import" : "Preview did not write an output file"}</small>
-          </div>
-          <div className="result-summary-grid compact">
-            <div className="stat-card">
-              <span>Matched disease</span>
-              <strong>{matchedDisease?.name || preview.error || "None"}</strong>
-            </div>
-            <div className="stat-card">
-              <span>Nodes</span>
-              <strong>{preview.nodeCount ?? 0}</strong>
-            </div>
-            <div className="stat-card">
-              <span>Relationships</span>
-              <strong>{preview.relationshipCount ?? 0}</strong>
-            </div>
-            <div className="stat-card">
-              <span>Preview file</span>
-              <strong>{preview.outputPath || "not written"}</strong>
-            </div>
-          </div>
-
-          {preview.warnings?.length ? (
-            <div className="provider-note warning">
-              {preview.warnings.join(" ")}
-              {previewHasCapWarning ? (
-                <span> Import will use this bounded preview only, not the full PrimeKG dataset.</span>
-              ) : null}
-            </div>
-          ) : null}
-
-          <div className="primekg-preview-grid">
-            <TopStats title="Top Node Types" stats={preview.statsByNodeType} />
-            <TopStats title="Top Relation Types" stats={preview.statsByRelationType} />
-            <div className="primekg-samples">
-              <h3>Sample Relationships</h3>
-              {(preview.sampleRelationships || []).slice(0, 6).map((relationship, index) => (
-                <div key={`${relationship.id || index}`} className="primekg-sample-card">
-                  <strong>{relationship.source}</strong>
-                  <span>{relationship.displayRelation || relationship.relation || "related_to"}</span>
-                  <strong>{relationship.target}</strong>
-                </div>
-              ))}
-              {preview.sampleRelationships?.length ? null : <p className="hint">No sample relationships yet.</p>}
-            </div>
-          </div>
-        </div>
-      ) : null}
-
-      {importSummary ? (
-        <div className={`provider-note ${importSummary.status === "imported" || importSummary.status === "dry_run" ? "success" : "warning"}`}>
-          <strong>Last Import:</strong> {importSummary.status}.{" "}
-          {importSummary.nodesImported || importSummary.nodeCount || 0} nodes, {importSummary.relationshipsImported || importSummary.relationshipCount || 0} relationships.
-          {importSummary.errors?.length ? <div>{importSummary.errors[0]}</div> : null}
-        </div>
-      ) : null}
+      {!fileFound ? <PrimeKGEmptyState icon={FileText} title="PrimeKG kg.csv missing" message="Download PrimeKG and place kg.csv in data/primekg/kg.csv to enable disease search." /> : null}
+      {fileFound && !neo4jConnected ? <PrimeKGEmptyState icon={ServerCrash} title="Neo4j offline" message="Graph loading requires Neo4j to be running with PrimeKG imported." /> : null}
 
       <div className="primekg-graph-stage">
         <div className="primekg-graph-heading">
@@ -230,7 +153,7 @@ export default function PrimeKGPanel({
           </div>
           {answerGraphLoaded ? (
             <IconButton icon={Network} label="Return to selected disease graph" onClick={onLoadGraph} disabled={loading === "graph"} />
-          ) : !graphLoaded ? <small>No graph loaded yet. Import a filtered subgraph, then load the graph viewer.</small> : null}
+          ) : !graphLoaded ? <small>No graph loaded yet. Select a disease, then load the graph viewer.</small> : null}
         </div>
         <PrimeKGGraphExplorer graph={graph} retrievals={retrievals} loading={loading === "graph"} error={error} onGraphModeChange={setGraphViewMode} />
       </div>
@@ -264,17 +187,3 @@ function PrimeKGEmptyState({ icon: Icon = HelpCircle, title, message }) {
   );
 }
 
-function TopStats({ title, stats }) {
-  const entries = Object.entries(stats || {}).sort((left, right) => Number(right[1]) - Number(left[1])).slice(0, 6);
-  return (
-    <div className="primekg-stat-list">
-      <h3>{title}</h3>
-      {entries.length ? entries.map(([label, value]) => (
-        <div key={label}>
-          <span>{label}</span>
-          <strong>{value}</strong>
-        </div>
-      )) : <p className="hint">No stats yet.</p>}
-    </div>
-  );
-}

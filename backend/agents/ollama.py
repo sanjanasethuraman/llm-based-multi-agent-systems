@@ -6,6 +6,16 @@ import asyncio
 
 logger = logging.getLogger(__name__)
 
+
+def _coerce_think(value):
+    """Interpret the Think option, tolerating legacy string values ("true"/"false")."""
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.strip().lower() in {"true", "1", "yes", "on"}
+    return bool(value)
+
+
 class OllamaProvider(AgentProvider):
     name = "OllamaProvider"
     MAX_ITERATIONS = 10
@@ -24,19 +34,17 @@ class OllamaProvider(AgentProvider):
         })
 
         if isinstance(incoming, dict):
-            role_type = "user"
-            text = ""
+            parts = []
             for src, item in incoming.items():
                 text = item.get("text") if isinstance(item, dict) else str(item)
-                label = item.get("label") if isinstance(item, dict) else None
-                ntype = item.get("type") if isinstance(item, dict) else None
-                if ntype == "input":
-                    role_type = "user"
-                elif ntype == "agent":
-                    role_type = "assistant"
-                elif ntype == "tool":
-                    role_type = "tool"
-            messages.append({"role": role_type, "content": text})
+                label = item.get("label") if isinstance(item, dict) else src
+                ntype = item.get("type") if isinstance(item, dict) else "node"
+                if text:
+                    parts.append(f"From {label} ({ntype}, {src}):\n{text}")
+            messages.append({
+                "role": "user",
+                "content": "\n\n".join(parts) or "Continue the workflow using the available context.",
+            })
         else:
             # fallback for legacy string/list incoming formats
             if isinstance(incoming, str):
@@ -59,16 +67,33 @@ class OllamaProvider(AgentProvider):
                     ollama_tools.append(self._to_ollama_schema(tool))
                     tool_map[tool.name] = (server_id, client)
         
+        think_enabled = _coerce_think(config.get("think", False))
+
         for _ in range(self.MAX_ITERATIONS):
             logger.info(f"{config.get('name')} calling Ollama model '{model}' with messages: {messages} and tools: {ollama_tools}")
-            response: ChatResponse = chat(
-                model=model,
-                messages=messages,
-                options={"temperature": float(config.get("temperature", 0.2))},
-                tools=ollama_tools,
-                think=config.get("think", False),
-                stream=False,
-            )
+            try:
+                # Run the blocking Ollama call off the event loop so a slow or
+                # stalled model does not freeze the whole backend.
+                response: ChatResponse = await asyncio.to_thread(
+                    chat,
+                    model=model,
+                    messages=messages,
+                    options={"temperature": float(config.get("temperature", 0.2))},
+                    tools=ollama_tools,
+                    think=think_enabled,
+                    stream=False,
+                )
+            except Exception as exc:
+                logger.exception("Ollama chat call failed")
+                hint = ""
+                if think_enabled:
+                    hint = (
+                        f" Thinking mode is enabled, but model '{model}' may not support it. "
+                        "Use a reasoning model (e.g. deepseek-r1, qwen3) or turn Think off."
+                    )
+                message = f"Ollama chat failed for model '{model}': {exc}.{hint}"
+                provider_logs.append({"status": "error", "message": message})
+                return f"[Ollama error] {message}", tool_calls, sub_agent_calls, called_tools, provider_logs
             logger.info(f"Response: {response}")
             messages.append(response.message)
             if response.message.tool_calls:
@@ -131,7 +156,13 @@ class OllamaProvider(AgentProvider):
                     "message": "Ollama returned no tool calls.",
                 })
                 break
-        return response.message.content, tool_calls, sub_agent_calls, called_tools, provider_logs
+        content = (response.message.content or "").strip()
+        if not content:
+            provider_logs.append({
+                "status": "warning",
+                "message": "Ollama returned an empty message.",
+            })
+        return content, tool_calls, sub_agent_calls, called_tools, provider_logs
     
     def _to_ollama_schema(self, tool) -> dict:
         """Convert an MCP Tool object to Ollama's expected tool schema."""
