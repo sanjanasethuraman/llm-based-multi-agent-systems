@@ -1600,11 +1600,27 @@ function ConfigPanel({ node, validation, huggingFaceStatus, mcpTools, mcpServers
             />
             <label>
               {node.config.provider === "huggingface" ? "Hugging Face Model ID" : "Model"}
-              <input
+              {node.config.provider === "huggingface" || node.config.provider === "mock" ?  (
+                <input
                 value={node.config.model || ""}
                 placeholder={node.config.provider === "huggingface" ? "mistralai/Mistral-7B-Instruct-v0.3" : "llama3.2:1b"}
                 onChange={(event) => updateConfig({ model: event.target.value })}
-              />
+                />
+              ) : (
+                <select
+                value={node.config.model || ""}
+                onChange={(event) => updateConfig({ model: event.target.value })}
+                >
+                  <option value="">
+                    Select model
+                  </option>
+                  {ollamaStatus.models?.map((model) => (
+                    <option key={model} value={model}>
+                      {model}
+                    </option>
+                  ))}
+                </select>
+              )}
             </label>
             {node.config.provider === "huggingface" && (
               <label>
