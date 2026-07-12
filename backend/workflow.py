@@ -198,6 +198,7 @@ async def run_workflow(workflow, mcp_registry: McpClientRegistry):
             node_results[node_id] = {
                 "status": "error",
                 "type": node.get("type"),
+                "label": node["label"],
                 "message": f"Unsupported node type: {node.get('type')}",
                 "durationMs": round((time.perf_counter() - node_started) * 1000, 2),
                 "outputPreview": "",
@@ -218,6 +219,7 @@ async def run_workflow(workflow, mcp_registry: McpClientRegistry):
         node_results[node_id] = {
             "status": status,
             "type": node["type"],
+            "label": node["label"],
             "message": message,
             "durationMs": round((time.perf_counter() - node_started) * 1000, 2),
             "outputPreview": preview_text(result, limit=None),
@@ -345,6 +347,21 @@ async def setup_sub_agent_servers(nodes: dict, edges: list, mcp_registry: McpCli
 
         await mcp_registry.connect(server_id)
         logger.info(f"Sub-agent {server_id} ready at http://127.0.0.1:{port}/mcp")
+
+async def cleanup_sub_agent_servers(mcp_registry):
+    """Remove sub-agent servers from registry and terminate their processes."""
+    sub_agent_ids = [
+        sid for sid in list(mcp_registry._clients.keys())
+        if sid.startswith("sub-agent-")
+    ]
+    for server_id in sub_agent_ids:
+        proc = mcp_registry._processes.pop(server_id, None)
+        if proc:
+            proc.terminate()
+            logger.info(f"Terminated sub-agent: {server_id} pid={proc.pid}")
+        mcp_registry._clients.pop(server_id, None)
+        mcp_registry._configs.pop(server_id, None)
+        logger.info(f"Removed sub-agent from registry: {server_id}")
 
 def generate_python(workflow):
     serialized = pformat(workflow, width=100, sort_dicts=False)

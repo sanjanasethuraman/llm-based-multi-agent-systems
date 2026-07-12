@@ -1101,6 +1101,15 @@ function WorkflowApp() {
       />
 
       <section className="post-kg-console" aria-label="Workflow evidence and output console">
+        {comparisonReports.length > 0 && (
+          <section className="comparison-panel">
+            <div className="comparison-header">
+              <h2>Workflow Comparison Report</h2>
+              <p>{comparisonReports.length} workflows executed</p>
+            </div>
+            <ComparisonReport reports={comparisonReports} />
+          </section>
+        )}
         <div className="post-kg-console__heading">
           <span>Execution console</span>
           <h2>Outputs, Evidence, and Tool Activity</h2>
@@ -1126,16 +1135,6 @@ function WorkflowApp() {
           onLoadAnswerGraph={loadAnswerGraphFromEvidence}
           onOpenGraph={openKnowledgeGraph}
         />
-
-        {comparisonReports.length > 0 && (
-          <section className="comparison-panel">
-            <div className="comparison-header">
-              <h2>Workflow Comparison Report</h2>
-              <p>{comparisonReports.length} workflows executed</p>
-            </div>
-            <ComparisonReport reports={comparisonReports} />
-          </section>
-        )}
 
         <section className="code-panel">
           <div className="code-header">
