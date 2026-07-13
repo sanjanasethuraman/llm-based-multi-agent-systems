@@ -1378,6 +1378,7 @@ pre {
     box-shadow var(--transition-base),
     transform var(--transition-base),
     opacity var(--transition-base);
+  overflow: visible;
 }
 
 .workflow-node.input {
@@ -4609,8 +4610,46 @@ pre {
 .node-stat-summary-header {
   display: flex;
   justify-content: space-between;
-  align-items: center;
+  align-items: flex-start;
   gap: 10px;
+}
+
+.node-stat-summary-title {
+  display: grid;
+  min-width: 0;
+  gap: 5px;
+}
+
+.node-stat-summary-title > strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.node-stat-summary-meta {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  gap: 6px;
+}
+
+.node-stat-summary-meta code {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.node-type-label {
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: rgba(79, 124, 255, 0.1);
+  color: #2f5cbc !important;
+  font-size: 10px !important;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
 }
 
 .node-stat-summary span,
@@ -4620,9 +4659,40 @@ pre {
 }
 
 .node-stat-summary-values {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(82px, 1fr));
+  gap: 8px;
+}
+
+.node-stat-metric {
+  display: grid;
+  gap: 3px;
+  padding: 9px 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+
+.node-stat-metric strong {
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+
+.node-output-availability {
   display: flex;
-  justify-content: space-between;
-  gap: 12px;
+  align-items: center;
+  gap: 6px;
+}
+
+.node-output-availability::before {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--muted);
+  content: "";
+}
+
+.node-output-availability.available::before {
+  background: #22a06b;
 }
 
 .node-ranking-item.focused,
@@ -7961,6 +8031,16 @@ pre {
 :root:not([data-theme="light"]) .node-ranking-meta,
 :root:not([data-theme="light"]) .type-breakdown-item span {
   color: var(--text-muted);
+}
+
+:root:not([data-theme="light"]) .node-stat-metric {
+  border-color: rgba(148, 163, 184, 0.14);
+  background: rgba(15, 23, 42, 0.7);
+}
+
+:root:not([data-theme="light"]) .node-type-label {
+  background: rgba(110, 231, 255, 0.1);
+  color: #6ee7ff !important;
 }
 
 :root:not([data-theme="light"]) .result-output-card pre,

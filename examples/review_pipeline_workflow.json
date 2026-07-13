@@ -34,7 +34,7 @@
         "position": { "x": 550, "y": 270 },
         "config": {
           "name": "Uppercase Check",
-          "toolType": "uppercase"
+          "toolName": "uppercase"
         }
       },
       {
