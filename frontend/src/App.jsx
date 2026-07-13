@@ -1389,11 +1389,12 @@ function ConfigPanel({
             />
             <label>
               {config.provider === "huggingface" ? "Hugging Face Model ID" : "Model"}
-              <input
-                value={config.model || ""}
-                placeholder={config.provider === "huggingface" ? "mistralai/Mistral-7B-Instruct-v0.3" : "llama3.2:1b"}
-                onChange={(event) => updateConfig({ model: event.target.value })}
-                />
+              <AgentModelField
+                provider={config.provider}
+                model={config.model}
+                ollamaStatus={ollamaStatus}
+                onChange={(model) => updateConfig({ model })}
+              />
             </label>
             {config.provider === "huggingface" && (
               <label>
@@ -1656,11 +1657,12 @@ function ConfigPanel({
             />
             <label>
               {config.provider === "huggingface" ? "Hugging Face Model ID" : "Model"}
-              <input
-                value={config.model || ""}
-                placeholder={config.provider === "huggingface" ? "mistralai/Mistral-7B-Instruct-v0.3" : "llama3.2:1b"}
-                onChange={(event) => updateConfig({ model: event.target.value })}
-                />
+              <AgentModelField
+                provider={config.provider}
+                model={config.model}
+                ollamaStatus={ollamaStatus}
+                onChange={(model) => updateConfig({ model })}
+              />
             </label>
             {config.provider === "huggingface" && (
               <label>
@@ -1735,6 +1737,34 @@ function ConfigPanel({
         <pre>{JSON.stringify(node, null, 2)}</pre>
       </details>
     </aside>
+  );
+}
+
+function AgentModelField({ provider, model, ollamaStatus, onChange }) {
+  if (provider !== "ollama") {
+    return (
+      <input
+        value={model || ""}
+        placeholder="mistralai/Mistral-7B-Instruct-v0.3"
+        onChange={(event) => onChange(event.target.value)}
+      />
+    );
+  }
+
+  const models = ollamaStatus?.models || [];
+  const selectedModelIsAvailable = models.includes(model);
+
+  return (
+    <select value={selectedModelIsAvailable ? model : ""} onChange={(event) => onChange(event.target.value)}>
+      <option value="">
+        {ollamaStatus?.available ? "Select an available model" : "Ollama models unavailable"}
+      </option>
+      {models.map((availableModel) => (
+        <option key={availableModel} value={availableModel}>
+          {availableModel}
+        </option>
+      ))}
+    </select>
   );
 }
 
