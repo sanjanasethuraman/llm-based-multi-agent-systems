@@ -47,6 +47,7 @@ export default function ComparisonReport({ reports = [] }) {
   const executionData = workflows.map(wf => ({
     name: wf.workflowName,
     agents: wf.stats?.agentCalls,
+    sub_agents: wf.stats?.subAgentCalls,
     tools: wf.stats?.toolCalls,
     retrievers: wf.stats?.retrieverCalls
   }));
@@ -314,6 +315,13 @@ export default function ComparisonReport({ reports = [] }) {
                     name="Agents"
                     fill="rgba(73, 214, 255, 0.32)"
                     stroke="#4db3d4"
+                  />
+
+                  <Bar 
+                    dataKey="sub_agents"
+                    name="Sub-Agents"
+                    fill="rgba(73, 255, 213, 0.32)"
+                    stroke="rgba(73, 255, 213, 0.6)"
                   />
 
                   <Bar 
