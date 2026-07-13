@@ -41,21 +41,22 @@ export default function ComparisonReport({ reports = [] }) {
 
   const runtimeData = workflows.map(wf => ({
     name: wf.workflowName,
-    runtime: +(wf.stats.runtimeMs / 1000).toFixed(2)
+    runtime: +(wf.stats?.runtimeMs / 1000).toFixed(2)
   }));
 
   const executionData = workflows.map(wf => ({
     name: wf.workflowName,
-    agents: wf.stats.agentCalls,
-    tools: wf.stats.toolCalls,
-    retrievers: wf.stats.retrieverCalls
+    agents: wf.stats?.agentCalls,
+    sub_agents: wf.stats?.subAgentCalls,
+    tools: wf.stats?.toolCalls,
+    retrievers: wf.stats?.retrieverCalls
   }));
 
   const tokenData = workflows.map(wf => {
     let input = 0;
     let output = 0;
 
-    Object.values(wf.stats.tokens).forEach(t => {
+    Object.values(wf.stats?.tokens ?? {}).forEach(t => {
       input += t.inputTokens;
       output += t.outputTokens;
     });
@@ -78,7 +79,7 @@ export default function ComparisonReport({ reports = [] }) {
   const agents = new Set();
 
   workflows.forEach(wf=>{
-    Object.keys(wf.stats.durations)
+    Object.keys(wf.stats?.durations ?? {})
       .forEach(a=>agents.add(a));
   });
 
@@ -88,8 +89,8 @@ export default function ComparisonReport({ reports = [] }) {
     };
     workflows.forEach(wf=>{
       row[wf.workflowName] =
-        wf.stats.durations[agent]
-          ? +(wf.stats.durations[agent]/1e9).toFixed(2)
+        wf.stats?.durations[agent]
+          ? +(wf.stats?.durations[agent]/1e9).toFixed(2)
           : 0;
     });
     agentDurationData.push(row);
@@ -133,32 +134,32 @@ export default function ComparisonReport({ reports = [] }) {
               <div class="stats-grid">
                 <div class="stat">
                   <span class="label">Runtime</span>
-                  <span class="value">{report.stats.runtimeMs.toFixed(0)} ms</span>
+                  <span class="value">{report.stats?.runtimeMs.toFixed(0)} ms</span>
                 </div>
 
                 <div class="stat">
                   <span class="label">Nodes Executed</span>
-                  <span class="value">{report.stats.nodesExecuted}</span>
+                  <span class="value">{report.stats?.nodesExecuted}</span>
                 </div>
 
                 <div class="stat">
                   <span class="label">Agent Calls</span>
-                  <span class="value">{report.stats.agentCalls}</span>
+                  <span class="value">{report.stats?.agentCalls}</span>
                 </div>
 
                 <div class="stat">
                   <span class="label">Sub-Agent Calls</span>
-                  <span class="value">{report.stats.subAgentCalls}</span>
+                  <span class="value">{report.stats?.subAgentCalls}</span>
                 </div>
 
                 <div class="stat">
                   <span class="label">Tool Calls</span>
-                  <span class="value">{report.stats.toolCalls}</span>
+                  <span class="value">{report.stats?.toolCalls}</span>
                 </div>
 
                 <div class="stat">
                   <span class="label">Retriever Calls</span>
-                  <span class="value">{report.stats.retrieverCalls}</span>
+                  <span class="value">{report.stats?.retrieverCalls}</span>
                 </div>
 
                 <div class="stat">
@@ -175,7 +176,7 @@ export default function ComparisonReport({ reports = [] }) {
               <h3>Agent Durations</h3>
 
               <div class="agent-list">
-                {Object.entries(report.stats.durations).map(([agent, duration]) => (
+                {Object.entries(report.stats?.durations ?? {}).map(([agent, duration]) => (
                   <div class="agent-row" key={agent}>
                     <span>{report.nodeResults[agent].label}</span>
                     <span>{(duration / 1e9).toFixed(2)} s</span>
@@ -186,7 +187,7 @@ export default function ComparisonReport({ reports = [] }) {
               <h3>Token Usage</h3>
 
               <div class="agent-list">
-                {Object.entries(report.stats.tokens).map(([agent, token]) => (
+                {Object.entries(report.stats?.tokens ?? {}).map(([agent, token]) => (
                   <div class="agent-row" key={agent}>
                     <span>{report.nodeResults[agent].label}</span>
                     <span>
@@ -314,6 +315,13 @@ export default function ComparisonReport({ reports = [] }) {
                     name="Agents"
                     fill="rgba(73, 214, 255, 0.32)"
                     stroke="#4db3d4"
+                  />
+
+                  <Bar 
+                    dataKey="sub_agents"
+                    name="Sub-Agents"
+                    fill="rgba(73, 255, 213, 0.32)"
+                    stroke="rgba(73, 255, 213, 0.6)"
                   />
 
                   <Bar 

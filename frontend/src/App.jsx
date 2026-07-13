@@ -2297,14 +2297,40 @@ function NodeStatsPanel({ nodeResults, stats, workflow }) {
                 onMouseLeave={() => setFocusedNode(null)}
               >
                 <div className="node-stat-summary-header">
-                  <strong>{node.label}</strong>
+                  <div className="node-stat-summary-title">
+                    <strong>{node.label}</strong>
+                    <span className="node-stat-summary-meta">
+                      <span className="node-type-label">{node.type}</span>
+                      <code>{node.id}</code>
+                    </span>
+                  </div>
                   <StatusBadge status={node.status || "idle"} />
                 </div>
-                <span>{node.type}: {node.id}</span>
                 <div className="node-stat-summary-values">
-                  <strong>{node.type == "agent" ? (stats?.durations[node.id]/1e9 || 0).toFixed(3) : node.durationMs || 0}s</strong>
-                  <span>{node.outputPreview ? "Output available" : "No output"}</span>
+                  <div className="node-stat-metric">
+                    <span>Duration</span>
+                    <strong>
+                      {stats?.durations?.[node.id] != null
+                        ? (stats.durations[node.id] / 1e9).toFixed(3)
+                        : ((node.durationMs || 0) / 1000).toFixed(3)}s
+                    </strong>
+                  </div>
+                  {["agent", "sub_agent"].includes(node.type) && (
+                    <>
+                      <div className="node-stat-metric">
+                        <span>Input tokens</span>
+                        <strong>{stats?.tokens?.[node.id]?.inputTokens ?? 0}</strong>
+                      </div>
+                      <div className="node-stat-metric">
+                        <span>Output tokens</span>
+                        <strong>{stats?.tokens?.[node.id]?.outputTokens ?? 0}</strong>
+                      </div>
+                    </>
+                  )}
                 </div>
+                <span className={`node-output-availability ${node.outputPreview ? "available" : "empty"}`}>
+                  {node.outputPreview ? "Output available" : "No output"}
+                </span>
               </article>
             ))}
           </div>

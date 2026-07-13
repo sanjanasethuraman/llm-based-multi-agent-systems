@@ -49,7 +49,7 @@
         "position": { "x": 520, "y": 285 },
         "config": {
           "name": "Word Count",
-          "toolType": "word_count"
+          "toolName": "word_count"
         }
       },
       {

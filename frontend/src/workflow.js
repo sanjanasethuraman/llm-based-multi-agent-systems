@@ -60,7 +60,7 @@ export const DEFAULT_WORKFLOW = {
       type: "tool",
       label: "Word Count",
       position: { x: 520, y: 285 },
-      config: { name: "Word Count", toolType: "word_count" },
+      config: { name: "Word Count", toolName: "word_count" },
     },
     {
       id: "output-1",
@@ -108,7 +108,7 @@ const DEFAULT_CONFIGS = {
     embeddingModel: "nomic-embed-text",
     baseUrl: "http://127.0.0.1:11434",
   },
-  tool: { name: "Tool", toolType: "echo" },
+  tool: { name: "Tool", toolName: "echo" },
   sub_agent: {
     name: "Sub-Agent",
     provider: "mock",
