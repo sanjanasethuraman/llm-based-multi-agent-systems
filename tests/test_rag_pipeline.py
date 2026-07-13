@@ -295,6 +295,42 @@ class RagPipelineTests(unittest.TestCase):
         self.assertTrue(result["graphEvidence"]["fallbackAllowed"])
         self.assertFalse(result["graphEvidence"]["fallbackUsed"])
 
+    def test_primekg_prompt_does_not_leak_example_disease_labels(self):
+        question_result = {
+            "query": "What drugs are connected to AIDS?",
+            "selectedDiseaseHint": "",
+            "detectedEntities": [{"id": "D:1", "name": "AIDS"}],
+            "entities": [{"id": "D:1", "name": "AIDS"}, {"id": "DRUG:1", "name": "Tenofovir disoproxil"}],
+            "relationships": [{"id": "R:1"}],
+            "paths": [
+                {
+                    "pathText": "AIDS --indication--> Tenofovir disoproxil",
+                    "path_text": "AIDS --indication--> Tenofovir disoproxil",
+                    "score": 0.9,
+                    "nodes": [{"id": "D:1", "name": "AIDS"}, {"id": "DRUG:1", "name": "Tenofovir disoproxil"}],
+                    "relationships": [{"displayRelation": "indication"}],
+                    "length": 1,
+                }
+            ],
+            "pathText": ["AIDS --indication--> Tenofovir disoproxil"],
+            "stats": {"pathCount": 1, "entityCount": 2, "relationshipCount": 1},
+            "coverage": {
+                "detectedConcepts": ["aids"],
+                "matchedConcepts": ["aids"],
+                "unmatchedConcepts": [],
+                "fullyGrounded": True,
+                "partiallyGrounded": False,
+            },
+            "evidenceStatus": {"status": "supported", "reason": "Direct graph evidence found."},
+            "intent": {"primary": "drug_disease_association", "supported": True},
+        }
+
+        result = primekg_question_retrieval_result(question_result)
+
+        self.assertIn("AIDS --indication--> Tenofovir disoproxil", result["context"])
+        self.assertNotIn("Migraine disorder", result["context"])
+        self.assertNotIn("Autoimmune disease", result["context"])
+
 
 if __name__ == "__main__":
     unittest.main()

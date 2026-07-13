@@ -912,7 +912,7 @@ def query_primekg_detection_rows(session, terms, limit=50, disease_only=False):
 def primekg_detection_terms(query, selected_disease=None):
     terms = []
     if selected_disease:
-        terms.append(normalize_name(selected_disease))
+        terms.append(normalize_primekg_search_term(selected_disease))
     terms.extend(extract_primekg_concept_phrases(query or ""))
 
     normalized_query = normalize_name(query)
@@ -929,27 +929,27 @@ def primekg_detection_terms(query, selected_disease=None):
             "biological mechanisms",
         ]:
             cleaned = cleaned.replace(stop, " ")
-        cleaned = normalize_name(cleaned)
+        cleaned = normalize_primekg_search_term(cleaned)
         # Only keep a short residual phrase; the whole multi-word question as a
         # "term" causes reverse-substring matches against tiny node names.
         if cleaned and len(cleaned) >= 3 and len(cleaned.split()) <= 4 and cleaned not in PRIMEKG_QUERY_STOPWORDS:
             terms.append(cleaned)
 
     for token in re.findall(r"[A-Za-z][A-Za-z0-9+/-]{2,}", query or ""):
-        term = normalize_name(token)
+        term = normalize_primekg_search_term(token)
         if term and term not in PRIMEKG_QUERY_STOPWORDS:
             terms.append(term)
 
     entities = extract_entities(query or "")
     terms.extend(
         term
-        for term in (normalize_name(entity.get("name")) for entity in entities if entity.get("name"))
+        for term in (normalize_primekg_search_term(entity.get("name")) for entity in entities if entity.get("name"))
         if term and term not in PRIMEKG_QUERY_STOPWORDS and term.split()[0] not in PRIMEKG_QUERY_STOPWORDS
     )
 
     unique_terms = []
     for term in terms:
-        term = normalize_name(term)
+        term = normalize_primekg_search_term(term)
         if term and term not in unique_terms:
             unique_terms.append(term)
 
@@ -974,12 +974,12 @@ def primekg_detection_concepts(query, selected_disease=None):
     def add_concept(label, terms, kind="query"):
         clean_terms = []
         for term in terms:
-            term = normalize_name(term)
+            term = normalize_primekg_search_term(term)
             if term and term not in PRIMEKG_QUERY_STOPWORDS and term not in clean_terms:
                 clean_terms.append(term)
         if not clean_terms:
             return
-        concept_id = normalize_name(label or clean_terms[0])
+        concept_id = normalize_primekg_search_term(label or clean_terms[0])
         if concept_id in seen:
             for concept in concepts:
                 if concept["id"] == concept_id:
@@ -990,14 +990,14 @@ def primekg_detection_concepts(query, selected_disease=None):
         seen.add(concept_id)
         concepts.append({"id": concept_id, "label": label or clean_terms[0], "terms": clean_terms, "kind": kind})
 
-    if selected_disease:
-        add_concept(normalize_name(selected_disease), [selected_disease], "disease_hint")
+    if should_apply_selected_disease_hint(query, selected_disease):
+        add_concept(normalize_primekg_search_term(selected_disease), [selected_disease], "disease_hint")
 
     for phrase in extract_primekg_concept_phrases(query or ""):
         add_concept(phrase, [phrase], "phrase")
 
     for term in primekg_detection_terms(query, selected_disease=None):
-        base = normalize_name(term)
+        base = normalize_primekg_search_term(term)
         if not base or base in PRIMEKG_QUERY_STOPWORDS:
             continue
         synonym_terms = [base, *PRIMEKG_TERM_SYNONYMS.get(base, [])]
@@ -1007,6 +1007,21 @@ def primekg_detection_concepts(query, selected_disease=None):
             add_concept(base, synonym_terms, "term")
 
     return concepts[:12]
+
+
+def should_apply_selected_disease_hint(query, selected_disease):
+    selected = normalize_primekg_search_term(selected_disease)
+    if not selected:
+        return False
+    query_text = normalize_primekg_search_term(query)
+    if selected and selected in query_text:
+        return True
+    explicit_terms = []
+    for token in re.findall(r"[A-Za-z][A-Za-z0-9+/-]{2,}", query or ""):
+        term = normalize_primekg_search_term(token)
+        if term and term not in PRIMEKG_QUERY_STOPWORDS and term not in PRIMEKG_GENERIC_DISEASE_NOUNS:
+            explicit_terms.append(term)
+    return not explicit_terms
 
 
 def merge_detected_entities_by_concept(concept_results, limit):
@@ -1591,7 +1606,7 @@ def primekg_query_concepts(query, selected_disease=None):
     """Meaningful biomedical concepts from the question, for coverage reporting."""
     concepts = []
     for term in primekg_detection_terms(query, selected_disease):
-        term = normalize_name(term)
+        term = normalize_primekg_search_term(term)
         if not term or term in PRIMEKG_QUERY_STOPWORDS:
             continue
         if len(term) < 3 or len(term.split()) > 3:  # drop noise and whole-sentence phrases
@@ -1671,7 +1686,8 @@ ANSWER_FORMAT_RULES = (
     "- Write a short paragraph answering the question, then concise bullet points grouped by disease or concept.\n"
     "- Include an 'Evidence gaps' note when unsupported or unmatched concepts are listed in question coverage.\n"
     "- Cite evidence as [Path N] after each supported claim.\n"
-    "- Use plain labels like 'Migraine disorder' and 'Autoimmune disease'.\n"
+    "- Use only disease/concept/entity names that appear in the Graph evidence paths or Question coverage.\n"
+    "- Do not create answer sections for diseases or concepts absent from the detected concepts and retrieved paths.\n"
     "- Include a short note only when evidence is partial or a relation is a contraindication."
 )
 
@@ -1897,8 +1913,8 @@ def format_primekg_context(paths, entities, relationships, stats):
     if paths:
         for index, path in enumerate(paths[:10], start=1):
             path_text = path.get("pathText") or path.get("path_text") or ""
-            if len(path_text) > 430:
-                path_text = path_text[:427].rstrip() + "..."
+            if len(path_text) > 320:
+                path_text = path_text[:317].rstrip() + "..."
             lines.append(f"[PrimeKG Path {index}] {path_text}")
     else:
         lines.append("No PrimeKG paths found.")
@@ -2288,6 +2304,12 @@ def stable_id(*parts):
 
 def normalize_name(value):
     return re.sub(r"\s+", " ", str(value).strip().lower())
+
+
+def normalize_primekg_search_term(value):
+    text = normalize_name(value)
+    text = re.sub(r"^[^a-z0-9]+|[^a-z0-9]+$", "", text)
+    return re.sub(r"\s+", " ", text).strip()
 
 
 def slug(value):

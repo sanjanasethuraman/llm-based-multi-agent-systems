@@ -92,6 +92,24 @@ class PrimeKGRetrievalTests(unittest.TestCase):
         self.assertLessEqual(len(result["detectedEntities"]), 10)
         self.assertGreaterEqual(session.run_count, 2)
 
+    def test_selected_disease_hint_does_not_pollute_explicit_question(self):
+        rows = [
+            {"id": "D:migraine", "name": "migraine disorder", "node_type": "disease", "source": "test"},
+            {"id": "D:aids", "name": "AIDS", "node_type": "disease", "source": "test"},
+        ]
+        with patched_primekg_driver(rows_by_kind={"detect": rows}):
+            result = detect_primekg_query_entities(
+                "What drugs are connected to AIDS?",
+                selected_disease="migraine",
+                checked_status={"enabled": True, "connected": True},
+            )
+
+        concepts = {concept["id"] for concept in result["concepts"]}
+        names = {entity["name"] for entity in result["detectedEntities"]}
+        self.assertIn("aids", concepts)
+        self.assertNotIn("migraine", concepts)
+        self.assertEqual(names, {"AIDS"})
+
     def test_detect_entities_finds_disease_from_question_case_insensitive(self):
         with patched_primekg_driver():
             result = detect_primekg_query_entities(
@@ -153,6 +171,12 @@ class PrimeKGRetrievalTests(unittest.TestCase):
         ]
         ranked = rank_primekg_detected_entities(rows, terms, limit=2)
         self.assertEqual({item["name"] for item in ranked}, {"migraine disorder", "autoimmune disease"})
+
+    def test_detection_terms_strip_question_punctuation(self):
+        terms = primekg_detection_terms("What drugs are connected to AIDS?")
+
+        self.assertIn("aids", terms)
+        self.assertNotIn("aids?", terms)
 
     def test_compound_query_detection_keeps_independent_concepts(self):
         query = "Which CGRP treatments have contraindications, and what are common autoimmune diseases?"
