@@ -1,0 +1,61 @@
+{
+  "label": "Demo Biomedical",
+  "description": "Input, planner agent, writer agent, and final output.",
+  "workflow": 
+    {
+    "nodes": [
+        {
+        "id": "input-1",
+        "type": "input",
+        "label": "Migraine Question",
+        "position": {
+            "x": 55.60553579359066,
+            "y": 209.32732926511514
+        },
+        "config": {
+            "text": "What drugs are connected to migraine?"
+        }
+        },
+        {
+        "id": "agent-1",
+        "type": "agent",
+        "label": "Biomedical Evidence Synthesizer",
+        "position": {
+            "x": 439.1478842010451,
+            "y": 190.11551720652955
+        },
+        "config": {
+            "name": "Biomedical Evidence Synthesizer",
+            "provider": "ollama",
+            "model": "qwen3:8b",
+            "baseUrl": "http://127.0.0.1:11434",
+            "huggingFaceToken": "",
+            "maxNewTokens": 512,
+            "temperature": 0.2,
+            "think": false,
+            "systemPrompt": "Write a human-readable biomedical research answer using your knowledge. Then always call the Review-Agent tool to get feedback. Start with 1 short paragraph, then bullet points grouped by disease/concept. Include that this is biomedical research exploration, not medical advice."
+        }
+        },
+        {
+        "id": "output-1",
+        "type": "output",
+        "label": "PrimeKG Graph RAG Answer",
+        "position": {
+            "x": 887.6732758097942,
+            "y": 201.5751567445642
+        },
+        "config": {}
+        }
+    ],
+    "edges": [
+        {
+        "source": "agent-1",
+        "target": "output-1"
+        },
+        {
+        "source": "input-1",
+        "target": "agent-1"
+        }
+    ]
+    }
+}
