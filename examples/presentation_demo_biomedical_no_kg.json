@@ -1,0 +1,94 @@
+{
+  "label": "Presentation Demo - Biomedical Multi-Agent (No KG)",
+  "description": "A presentation-ready biomedical workflow that uses an Ollama orchestrator, two specialist sub-agents, and the internal MCP word-count tool without knowledge-graph retrieval.",
+  "workflow": {
+    "nodes": [
+      {
+        "id": "input-1",
+        "type": "input",
+        "label": "Molecular Biology Question",
+        "position": { "x": 40, "y": 230 },
+        "config": {
+          "text": "Prepare a concise presentation brief explaining how information flows from DNA to RNA to protein, which cellular structures and processes are involved, and why gene regulation matters."
+        }
+      },
+      {
+        "id": "agent-1",
+        "type": "agent",
+        "label": "Biomedical Demo Orchestrator",
+        "position": { "x": 330, "y": 230 },
+        "config": {
+          "name": "Biomedical_Demo_Orchestrator",
+          "provider": "ollama",
+          "model": "qwen2:7b",
+          "baseUrl": "http://127.0.0.1:11434",
+          "huggingFaceToken": "",
+          "maxNewTokens": 450,
+          "temperature": 0.1,
+          "think": false,
+          "systemPrompt": "You are the lead agent for a live biomedical multi-agent demonstration. Your FIRST response must contain exactly three tool calls and no prose: call run_Molecular_Process_Analyst with the complete user question, call run_Scientific_Communication_Reviewer with the complete user question, and call word_count with input_str set to the complete user question. Do not write the final answer until all three tool results are present. Then reconcile the specialist responses and return a polished presentation brief of at most 220 words with the exact headings Information flow, Cellular machinery, Regulation, and Limits of the simplified model. Present DNA to RNA to protein as a useful overview, not an exception-free law. Fact-check the tool responses before using them. For protein-coding genes, eukaryotic transcription occurs mainly in the nucleoplasm, not primarily in the nucleolus; the nucleolus is chiefly associated with rRNA synthesis and ribosome assembly. Bacterial transcription occurs in the cytoplasm/nucleoid region. Ribosomes operate free in the cytosol or on rough ER, never in the Golgi. State that many functional RNAs are never translated. Do not invent citations or claim that a knowledge graph was used. If a tool fails, identify the failed tool and continue with the available evidence."
+        }
+      },
+      {
+        "id": "sub_agent-1",
+        "type": "sub_agent",
+        "label": "Molecular Process Analyst",
+        "position": { "x": 650, "y": 40 },
+        "config": {
+          "name": "Molecular_Process_Analyst",
+          "provider": "ollama",
+          "model": "qwen2:7b",
+          "baseUrl": "http://127.0.0.1:11434",
+          "huggingFaceToken": "",
+          "maxNewTokens": 260,
+          "temperature": 0.1,
+          "think": false,
+          "systemPrompt": "You are a molecular-process analyst. Explain the supplied question using well-established introductory biology. Cover transcription, RNA processing in eukaryotes, translation at ribosomes, and the role of regulation. Return exactly 4 short bullets totaling no more than 120 words. Distinguish the simplified overview from details that vary across organisms and cell types."
+        }
+      },
+      {
+        "id": "sub_agent-2",
+        "type": "sub_agent",
+        "label": "Scientific Communication Reviewer",
+        "position": { "x": 650, "y": 235 },
+        "config": {
+          "name": "Scientific_Communication_Reviewer",
+          "provider": "ollama",
+          "model": "qwen2:7b",
+          "baseUrl": "http://127.0.0.1:11434",
+          "huggingFaceToken": "",
+          "maxNewTokens": 260,
+          "temperature": 0.1,
+          "think": false,
+          "systemPrompt": "You are a scientific-communication reviewer, not the answer writer. Return exactly 4 short reviewer warnings totaling no more than 120 words. Cover these four points: many functional RNAs are never translated; regulation occurs at multiple stages; transcription and translation locations differ between eukaryotes and bacteria; and DNA to RNA to protein has biological exceptions such as reverse transcription. Correct any claim that ribosomes are in the Golgi: they operate free in cytosol or on rough ER."
+        }
+      },
+      {
+        "id": "tool-1",
+        "type": "tool",
+        "label": "MCP Word Count",
+        "position": { "x": 650, "y": 430 },
+        "config": {
+          "name": "MCP Word Count",
+          "toolType": "word_count",
+          "serverId": "internal",
+          "toolName": "word_count"
+        }
+      },
+      {
+        "id": "output-1",
+        "type": "output",
+        "label": "Gene Expression Presentation Brief",
+        "position": { "x": 970, "y": 230 },
+        "config": {}
+      }
+    ],
+    "edges": [
+      { "source": "input-1", "target": "agent-1" },
+      { "source": "agent-1", "target": "sub_agent-1" },
+      { "source": "agent-1", "target": "sub_agent-2" },
+      { "source": "agent-1", "target": "tool-1" },
+      { "source": "agent-1", "target": "output-1" }
+    ]
+  }
+}

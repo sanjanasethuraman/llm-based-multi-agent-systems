@@ -25,6 +25,15 @@ class AgentNodeExecutor(NodeExecutor):
 
         config = node.get("config", {})
         incoming = collect_incoming_map(node["id"], context["edges"], context["values"], context["nodes"])
+        if config.get("requireGraphEvidence") and not has_incoming_graph_paths(incoming, context):
+            result = config.get("graphEvidenceUnavailableMessage") or (
+                "Graph evidence is unavailable. Start Neo4j, import a relevant PrimeKG subgraph, "
+                "and run the workflow again."
+            )
+            message = "Agent skipped because its required graph evidence was unavailable."
+            log_node(node["id"], context, message, status="warning", node_type=node.get("type"))
+            return result, {"status": "warning", "message": message}
+
         registry = context["mcp_registry"]
         available_tools = get_available_tools(node["id"], context["edges"], context["nodes"])
         log_node(node["id"], context, f"Agent has access to {len(available_tools)} tool(s).", status="info", node_type=node.get("type"))
@@ -79,6 +88,18 @@ class AgentNodeExecutor(NodeExecutor):
 
         message = f"Agent '{config.get('name') or provider_name}' executed successfully."
         return result, {"status": "completed", "message": message}
+
+
+def has_incoming_graph_paths(incoming, context):
+    """Return whether a graph retriever feeding this agent produced real paths."""
+    incoming_ids = set(incoming)
+    for retrieval in context.get("retrievals", []):
+        if retrieval.get("nodeId") not in incoming_ids or retrieval.get("retrievalMode") != "graph":
+            continue
+        graph_evidence = retrieval.get("graphEvidence") or {}
+        if graph_evidence.get("paths") or graph_evidence.get("pathText") or graph_evidence.get("path_text"):
+            return True
+    return False
 
 
 def normalize_provider_result(provider_result):

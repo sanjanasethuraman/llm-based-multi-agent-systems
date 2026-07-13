@@ -1,0 +1,134 @@
+{
+  "label": "Presentation Demo - Biomedical Multi-Agent + PrimeKG",
+  "description": "A presentation-ready PrimeKG workflow that retrieves bounded migraine evidence paths from Neo4j, delegates graph interpretation and evidence review to sub-agents, and uses an internal MCP tool.",
+  "workflow": {
+    "nodes": [
+      {
+        "id": "input-1",
+        "type": "input",
+        "label": "PrimeKG Migraine Question",
+        "position": { "x": 35, "y": 210 },
+        "config": {
+          "text": "Using the imported PrimeKG migraine subgraph, explain which drugs, genes or proteins, pathways, and phenotypes are connected to migraine. Distinguish direct graph evidence from interpretation."
+        }
+      },
+      {
+        "id": "retriever-1",
+        "type": "retriever",
+        "label": "PrimeKG Evidence Retriever",
+        "position": { "x": 300, "y": 210 },
+        "config": {
+          "name": "PrimeKG Evidence Retriever",
+          "collection": "primekg_migraine_demo",
+          "retrievalMode": "graph",
+          "vectorBackend": "local-json-fallback",
+          "embeddingModel": "nomic-embed-text",
+          "baseUrl": "http://127.0.0.1:11434",
+          "topK": 5,
+          "graphDisease": "migraine",
+          "disease": "migraine",
+          "graphHops": 2,
+          "graphTopK": 10,
+          "primekgAllowedNodeTypes": [
+            "disease",
+            "drug",
+            "gene/protein",
+            "pathway",
+            "biological_process",
+            "molecular_function",
+            "phenotype"
+          ],
+          "graphEnabled": true
+        }
+      },
+      {
+        "id": "agent-1",
+        "type": "agent",
+        "label": "KG Demo Orchestrator",
+        "position": { "x": 570, "y": 210 },
+        "config": {
+          "name": "KG_Demo_Orchestrator",
+          "provider": "ollama",
+          "model": "qwen2:7b",
+          "baseUrl": "http://127.0.0.1:11434",
+          "huggingFaceToken": "",
+          "maxNewTokens": 520,
+          "temperature": 0.1,
+          "think": false,
+          "requireGraphEvidence": true,
+          "graphEvidenceUnavailableMessage": "PrimeKG evidence is unavailable, so no biomedical claims were generated. Start Neo4j, import a filtered migraine PrimeKG subgraph, and run this workflow again.",
+          "systemPrompt": "You are the lead agent for a live PrimeKG biomedical demonstration. The only incoming text should be retrieved graph evidence for this fixed presentation question: which drugs, genes or proteins, pathways, and phenotypes are connected to migraine? EVIDENCE GATE: inspect the incoming text before calling tools. If it contains Graph RAG unavailable, Graph RAG disabled, No imported PrimeKG, No PrimeKG, no graph entities, or no PrimeKG paths, do not call any tool and do not answer the biomedical question from memory. Return only a short setup message saying Neo4j must be started and a filtered migraine PrimeKG subgraph imported. Otherwise, the incoming text must contain literal Graph evidence paths or PrimeKG Path entries. Your FIRST response must then contain exactly three tool calls and no prose: call run_Graph_Path_Interpreter with the complete retrieved evidence, call run_Evidence_Quality_Reviewer with the complete retrieved evidence, and call word_count with input_str set to the complete retrieved evidence. Do not write the final answer until all three tool results are present. Then return at most 260 words with the headings Direct KG evidence, Biomedical interpretation, Limitations, and Demo takeaway. Preserve relationship direction when describing a path. Clearly separate facts present in the graph from your interpretation. Never imply causation from a graph connection alone. End with a biomedical-research and non-medical-advice disclaimer."
+        }
+      },
+      {
+        "id": "sub_agent-1",
+        "type": "sub_agent",
+        "label": "Graph Path Interpreter",
+        "position": { "x": 845, "y": 25 },
+        "config": {
+          "name": "Graph_Path_Interpreter",
+          "provider": "ollama",
+          "model": "qwen2:7b",
+          "baseUrl": "http://127.0.0.1:11434",
+          "huggingFaceToken": "",
+          "maxNewTokens": 300,
+          "temperature": 0.1,
+          "think": false,
+          "systemPrompt": "You are a knowledge-graph path interpreter. EVIDENCE GATE: if the input does not contain literal Graph evidence paths, PrimeKG Path entries, or explicit labeled relationship arrows, return exactly NO_GRAPH_EVIDENCE: no PrimeKG paths were supplied and make no biomedical claims. Otherwise use only the supplied PrimeKG evidence. Extract up to four high-value paths involving migraine and drugs, genes or proteins, pathways, biological processes, or phenotypes. Preserve the direction and label of every relationship. For each path, state what is directly represented and what would only be interpretation. Return no more than 150 words and do not add biomedical facts absent from the evidence."
+        }
+      },
+      {
+        "id": "sub_agent-2",
+        "type": "sub_agent",
+        "label": "Evidence Quality Reviewer",
+        "position": { "x": 845, "y": 230 },
+        "config": {
+          "name": "Evidence_Quality_Reviewer",
+          "provider": "ollama",
+          "model": "qwen2:7b",
+          "baseUrl": "http://127.0.0.1:11434",
+          "huggingFaceToken": "",
+          "maxNewTokens": 260,
+          "temperature": 0.1,
+          "think": false,
+          "systemPrompt": "You are an evidence-quality reviewer for biomedical knowledge graphs. EVIDENCE GATE: if the input does not contain literal Graph evidence paths, PrimeKG Path entries, or explicit labeled relationship arrows, return exactly NO_GRAPH_EVIDENCE: no PrimeKG paths were supplied and make no biomedical claims. Otherwise review only the supplied graph evidence. Identify whether paths are direct or multi-hop, warn that graph adjacency does not prove causality or clinical effectiveness, and list missing evidence such as study design, effect size, population, dosage, or provenance. Return exactly 4 short bullets totaling no more than 120 words."
+        }
+      },
+      {
+        "id": "tool-1",
+        "type": "tool",
+        "label": "MCP Word Count",
+        "position": { "x": 845, "y": 435 },
+        "config": {
+          "name": "MCP Word Count",
+          "toolType": "word_count",
+          "serverId": "internal",
+          "toolName": "word_count"
+        }
+      },
+      {
+        "id": "output-1",
+        "type": "output",
+        "label": "Grounded Presentation Answer",
+        "position": { "x": 1165, "y": 170 },
+        "config": {}
+      },
+      {
+        "id": "output-2",
+        "type": "output",
+        "label": "Raw PrimeKG Evidence",
+        "position": { "x": 570, "y": 500 },
+        "config": {}
+      }
+    ],
+    "edges": [
+      { "source": "input-1", "target": "retriever-1" },
+      { "source": "retriever-1", "target": "agent-1" },
+      { "source": "agent-1", "target": "sub_agent-1" },
+      { "source": "agent-1", "target": "sub_agent-2" },
+      { "source": "agent-1", "target": "tool-1" },
+      { "source": "agent-1", "target": "output-1" },
+      { "source": "retriever-1", "target": "output-2" }
+    ]
+  }
+}
