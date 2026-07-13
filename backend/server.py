@@ -206,7 +206,12 @@ class AppHandler(BaseHTTPRequestHandler):
                     run_workflow_batch(workflows, registry, mode),
                     _loop
                 )
-                batch_result = future.result()
+                try:
+                    batch_result = future.result(timeout=3600)
+                except concurrent.futures.CancelledError as e:
+                    logger.error(f"Batch future was cancelled: {e}", exc_info=True)
+                    logger.error(f"_loop running: {_loop.is_running()} closed: {_loop.is_closed()}")
+                    return self._send_json({"error": "Batch was cancelled"}, status=500)
                 summary = generate_comparison_summary(batch_result)
                 return self._send_json({
                     "batchResult": batch_result,
@@ -273,6 +278,12 @@ class AppHandler(BaseHTTPRequestHandler):
                     try:
                         await client.__aenter__()
                         result = await client.call_tool(tool_name, arguments)
+                        try:
+                            parsed = json.loads(result)
+                            if isinstance(parsed, dict) and "text" in parsed and "stats" in parsed:
+                                return {"result": parsed["text"], "stats": parsed["stats"]}
+                        except (json.JSONDecodeError, TypeError):
+                            pass
                         return {"result": result}
                     except Exception as e:
                         logger.error(f"call-tool failed {server_id}/{tool_name}: {e}")

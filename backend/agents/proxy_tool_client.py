@@ -41,6 +41,7 @@ class ProxyToolClient:
         return [_SchemaTool(t) for t in self._tools]
 
     async def call_tool(self, name: str, arguments: dict) -> str:
+        import json
         main_url = os.environ.get("MAIN_SERVER_URL", "http://127.0.0.1:8000")
         async with httpx.AsyncClient() as client:
             r = await client.post(
@@ -56,4 +57,14 @@ class ProxyToolClient:
         if "error" in data:
             logger.error(f"Proxy error {self.server_id}/{name}: {data['error']}")
             return f"Error: {data['error']}"
-        return data.get("result", "")
+        if "stats" in data:
+            return {"result": data.get("result", ""), "stats": data["stats"]}
+        result_text = data.get("result", "")
+        try:
+            parsed = json.loads(result_text)
+            if isinstance(parsed, dict) and "text" in parsed and "stats" in parsed:
+                return {"result": parsed["text"], "stats": parsed["stats"]}
+        except (json.JSONDecodeError, TypeError):
+            pass
+
+        return result_text

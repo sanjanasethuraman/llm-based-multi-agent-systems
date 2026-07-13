@@ -5,8 +5,9 @@ import inspect
 import logging
 import subprocess
 import asyncio
-import httpx
+import copy
 import socket
+import uuid
 from collections import defaultdict
 from pprint import pformat
 
@@ -160,9 +161,12 @@ async def run_workflow(workflow, mcp_registry: McpClientRegistry):
         raise ValueError("Workflow validation failed: " + " ".join(validation["errors"]))
 
     started = time.perf_counter()
-    nodes = {node["id"]: node for node in workflow.get("nodes", [])}
+    run_id = uuid.uuid4().hex[:8]
+    scoped_workflow = copy.deepcopy(workflow)
+    nodes = {node["id"]: node for node in scoped_workflow.get("nodes", [])}
     edges = workflow.get("edges", [])
     order = topological_order(nodes, edges)
+    sub_agent_server_ids = _assign_sub_agent_server_ids(nodes, run_id)
 
     values = {}
     logs = []
@@ -177,10 +181,12 @@ async def run_workflow(workflow, mcp_registry: McpClientRegistry):
         "mcpCalls": 0,
         "estimatedTokens": 0,
         "subAgentCalls": 0,
+        "durations": {},
+        "tokens": {},
     }
 
     context = {
-        "workflow": workflow,
+        "workflow": scoped_workflow,
         "nodes": nodes,
         "edges": edges,
         "values": values,
@@ -192,89 +198,92 @@ async def run_workflow(workflow, mcp_registry: McpClientRegistry):
         "agentToolCalls": [],
         "mcp_registry": mcp_registry,
         }
-    
-    await setup_sub_agent_servers(nodes, edges, mcp_registry)
 
-    for node_id in order:
-        node_started = time.perf_counter()
-        node = nodes[node_id]
-        executor = get_node_executor(node.get("type"))
+    result_payload = None
+    workflow_completed = False
 
-        if executor is None:
+    try:
+        await setup_sub_agent_servers(nodes, edges, mcp_registry)
+
+        for node_id in order:
+            node_started = time.perf_counter()
+            node = nodes[node_id]
+            executor = get_node_executor(node.get("type"))
+
+            if executor is None:
+                node_results[node_id] = {
+                    "status": "error",
+                    "type": node.get("type"),
+                    "label": node["label"],
+                    "message": f"Unsupported node type: {node.get('type')}",
+                    "durationMs": round((time.perf_counter() - node_started) * 1000, 2),
+                    "outputPreview": "",
+                    "matches": [],
+                }
+                continue
+            else:
+                try:
+                    if inspect.iscoroutinefunction(executor.execute):
+                        result, metadata = await executor.execute(node, context)
+                    else:
+                        result, metadata = executor.execute(node, context)
+                except Exception as exc:
+                    logger.exception(f"Node {node_id} ({node.get('type')}) failed")
+                    result = ""
+                    metadata = {"status": "error", "message": f"{node.get('type')} node failed: {exc}"}
+                status = metadata.get("status", "completed")
+                message = metadata.get("message", "")
+                stats.update(metadata.get("stats", {}))
+
+
+            values[node_id] = result
             node_results[node_id] = {
-                "status": "error",
-                "type": node.get("type"),
-                "message": f"Unsupported node type: {node.get('type')}",
+                "status": status,
+                "type": node["type"],
+                "label": node["label"],
+                "message": message,
                 "durationMs": round((time.perf_counter() - node_started) * 1000, 2),
-                "outputPreview": "",
-                "matches": [],
+                "outputPreview": preview_text(result, limit=None),
+                "matches": metadata.get("matches", []),
+                "mcpCall": metadata.get("mcpCall"),
+                "logs": context["nodeLogs"].get(node_id, []),
             }
-            continue
-        else:
-            try:
-                if inspect.iscoroutinefunction(executor.execute):
-                    result, metadata = await executor.execute(node, context)
-                else:
-                    result, metadata = executor.execute(node, context)
-            except Exception as exc:
-                logger.exception(f"Node {node_id} ({node.get('type')}) failed")
-                result = ""
-                metadata = {"status": "error", "message": f"{node.get('type')} node failed: {exc}"}
-            status = metadata.get("status", "completed")
-            message = metadata.get("message", "")
-            stats.update(metadata.get("stats", {}))
+            logs.append(log_item(node_id, node.get("type"), message or f"{node.get('type')} node executed.", status))
 
-    
-        values[node_id] = result
-        node_results[node_id] = {
-            "status": status,
-            "type": node["type"],
-            "message": message,
-            "durationMs": round((time.perf_counter() - node_started) * 1000, 2),
-            "outputPreview": preview_text(result, limit=None),
-            "matches": metadata.get("matches", []),
-            "mcpCall": metadata.get("mcpCall"),
-            "logs": context["nodeLogs"].get(node_id, []),
+        final_output = "\n\n".join(values.get(node_id, "") for node_id in nodes if nodes[node_id].get("type") == "output")
+        runtime_ms = round((time.perf_counter() - started) * 1000, 2)
+
+        result_payload = {
+            "output": final_output,
+            "logs": context["nodeLogs"],
+            "stats": {
+                **stats,
+                "runtimeMs": runtime_ms,
+                "nodesExecuted": len(order),
+            },
+            "executionOrder": order,
+            "nodeResults": node_results,
+            "retrievals": retrievals,
+            "mcpCalls": context["mcpCalls"],
+            "validation": validation,
         }
-        logs.append(log_item(node_id, node.get("type"), message or f"{node.get('type')} node executed.", status))
+        workflow_completed = True
+    finally:
+        await _cleanup_sub_agents_on_exit(
+            mcp_registry,
+            sub_agent_server_ids,
+            suppress_cancellation=workflow_completed,
+        )
 
-    final_output = "\n\n".join(values.get(node_id, "") for node_id in nodes if nodes[node_id].get("type") == "output")
-    runtime_ms = round((time.perf_counter() - started) * 1000, 2)
+    if workflow_completed:
+        cleared = _clear_current_task_cancellation()
+        if cleared:
+            logger.debug(
+                "Cleared %s pending cancellation request(s) before returning workflow result.",
+                cleared,
+            )
 
-    await asyncio.sleep(0.5)  # allow sub-agent servers to finish any pending requests
-    for server_id, client in list(mcp_registry._clients.items()):
-        if server_id.startswith("sub-agent-"):
-            try:
-                await client.__aexit__(None, None, None)
-            except BaseException as exc:
-                if isinstance(exc, (KeyboardInterrupt, SystemExit)):
-                    raise
-                logger.debug(f"Sub-agent client cleanup failed for {server_id}: {exc}")
-            mcp_registry._clients.pop(server_id, None)
-            mcp_registry._configs.pop(server_id, None)
-    for server_id, proc in list(mcp_registry._processes.items()):
-        proc.terminate()
-        logger.info(f"Terminated sub-agent {server_id} pid={proc.pid}")
-    mcp_registry._processes.clear()
-
-    for server_id in [sid for sid in mcp_registry._clients if sid.startswith("sub-agent-")]:
-        mcp_registry._clients.pop(server_id, None)
-        mcp_registry._configs.pop(server_id, None)
-
-    return {
-        "output": final_output,
-        "logs": context["nodeLogs"],
-        "stats": {
-            **stats,
-            "runtimeMs": runtime_ms,
-            "nodesExecuted": len(order),
-        },
-        "executionOrder": order,
-        "nodeResults": node_results,
-        "retrievals": retrievals,
-        "mcpCalls": context["mcpCalls"],
-        "validation": validation,
-    }
+    return result_payload
 
 def log_item(node_id, node_type, message, status="completed"):
     return {
@@ -291,16 +300,51 @@ def find_free_port() -> int:
         return s.getsockname()[1]
 
 
+def _assign_sub_agent_server_ids(nodes: dict, run_id: str) -> set[str]:
+    server_ids = set()
+    for node in nodes.values():
+        if node.get("type") != "sub_agent":
+            continue
+        node_id = node["id"]
+        config = node.setdefault("config", {})
+        server_id = f"sub-agent-{run_id}-{node_id}"
+        config["_serverId"] = server_id
+        server_ids.add(server_id)
+    return server_ids
+
+
 async def _wait_for_port(port: int, timeout: float = 15.0):
     deadline = asyncio.get_event_loop().time() + timeout
-    async with httpx.AsyncClient() as client:
-        while asyncio.get_event_loop().time() < deadline:
-            try:
-                await client.get(f"http://127.0.0.1:{port}/mcp", timeout=1.0)
-                return
-            except Exception:
-                await asyncio.sleep(0.2)
+    while asyncio.get_event_loop().time() < deadline:
+        try:
+            reader, writer = await asyncio.wait_for(
+                asyncio.open_connection("127.0.0.1", port),
+                timeout=1.0,
+            )
+            writer.close()
+            await writer.wait_closed()
+            return
+        except Exception:
+            await asyncio.sleep(0.2)
     raise TimeoutError(f"Sub-agent on port {port} did not start within {timeout}s")
+
+
+async def _connect_sub_agent_with_retry(
+    mcp_registry: McpClientRegistry,
+    server_id: str,
+    timeout: float = 15.0,
+):
+    deadline = asyncio.get_event_loop().time() + timeout
+    last_exc = None
+    while asyncio.get_event_loop().time() < deadline:
+        try:
+            await mcp_registry.connect(server_id)
+            return
+        except Exception as exc:
+            last_exc = exc
+            mcp_registry._clients.pop(server_id, None)
+            await asyncio.sleep(0.25)
+    raise TimeoutError(f"Sub-agent {server_id} MCP connection failed: {last_exc}")
 
 
 async def setup_sub_agent_servers(nodes: dict, edges: list, mcp_registry: McpClientRegistry):
@@ -318,7 +362,7 @@ async def setup_sub_agent_servers(nodes: dict, edges: list, mcp_registry: McpCli
 
         node_id = node["id"]
         config = node.get("config", {})
-        server_id = f"sub-agent-{node_id}"
+        server_id = config.get("_serverId") or f"sub-agent-{node_id}"
 
         # skip if already connected (e.g. workflow re-run)
         if server_id in mcp_registry.all_clients():
@@ -342,10 +386,9 @@ async def setup_sub_agent_servers(nodes: dict, edges: list, mcp_registry: McpCli
 
         try:
             await _wait_for_port(port)
-        except TimeoutError:
+        except TimeoutError as exc:
             logger.error(f"Sub-agent {server_id} failed to start on port {port}")
-            proc.terminate()
-            continue
+            raise RuntimeError(f"Sub-agent {server_id} failed to start on port {port}") from exc
 
         mcp_registry.add_server(McpServerConfig(
             id=server_id,
@@ -354,8 +397,118 @@ async def setup_sub_agent_servers(nodes: dict, edges: list, mcp_registry: McpCli
             url=f"http://127.0.0.1:{port}/mcp",
         ))
 
-        await mcp_registry.connect(server_id)
+        await _connect_sub_agent_with_retry(mcp_registry, server_id)
         logger.info(f"Sub-agent {server_id} ready at http://127.0.0.1:{port}/mcp")
+
+async def _cleanup_sub_agents_on_exit(
+    mcp_registry,
+    server_ids: set[str],
+    suppress_cancellation: bool = False,
+):
+    try:
+        await cleanup_sub_agent_servers(
+            mcp_registry,
+            server_ids,
+            suppress_cancellation=suppress_cancellation,
+        )
+    except asyncio.CancelledError:
+        if suppress_cancellation:
+            cleared = _clear_current_task_cancellation()
+            logger.debug(
+                "Sub-agent cleanup cancellation suppressed after workflow completion. "
+                f"Cleared {cleared} pending cancellation request(s)."
+            )
+            return
+        raise
+    finally:
+        if suppress_cancellation:
+            cleared = _clear_current_task_cancellation()
+            if cleared:
+                logger.debug(
+                    "Cleared %s pending cancellation request(s) after completed workflow cleanup.",
+                    cleared,
+                )
+
+
+def _clear_current_task_cancellation() -> int:
+    task = asyncio.current_task()
+    if task is None or not hasattr(task, "uncancel"):
+        return 0
+
+    cleared = 0
+    while task.cancelling():
+        task.uncancel()
+        cleared += 1
+    return cleared
+
+
+def _terminate_process(server_id: str, proc: subprocess.Popen, timeout: float = 5.0):
+    if proc.poll() is not None:
+        return
+    proc.terminate()
+    try:
+        proc.wait(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        proc.wait(timeout=timeout)
+    logger.info(f"Terminated sub-agent: {server_id} pid={proc.pid}")
+
+
+async def cleanup_sub_agent_servers(mcp_registry, server_ids=None, suppress_cancellation=False):
+    """
+    Remove sub-agent servers from the registry and terminate their subprocesses.
+    When server_ids is provided, only those workflow-owned sub-agents are touched.
+    """
+    if server_ids is None:
+        sub_agent_ids = {
+            sid
+            for sid in set(mcp_registry._clients) | set(mcp_registry._processes) | set(mcp_registry._configs)
+            if sid.startswith("sub-agent-")
+        }
+    else:
+        sub_agent_ids = set(server_ids)
+
+    propagate_cancellation = False
+
+    for server_id in sub_agent_ids:
+        client = mcp_registry._clients.pop(server_id, None)
+        mcp_registry._configs.pop(server_id, None)
+
+        if client is not None:
+            try:
+                await client.__aexit__(None, None, None)
+            except asyncio.CancelledError:
+                propagate_cancellation = propagate_cancellation or not suppress_cancellation
+            except BaseException as exc:
+                if isinstance(exc, (KeyboardInterrupt, SystemExit)):
+                    raise
+                logger.debug(f"Sub-agent client cleanup failed for {server_id}: {exc}")
+            finally:
+                cleared = _clear_current_task_cancellation()
+                if cleared:
+                    if not suppress_cancellation:
+                        propagate_cancellation = True
+                    logger.debug(
+                        f"Cleared {cleared} pending cancellation request(s) after "
+                        f"sub-agent client cleanup for {server_id}."
+                    )
+
+        proc = mcp_registry._processes.pop(server_id, None)
+        if proc:
+            _terminate_process(server_id, proc)
+
+        logger.info(f"Removed sub-agent from registry: {server_id}")
+
+    if suppress_cancellation:
+        cleared = _clear_current_task_cancellation()
+        if cleared:
+            logger.debug(
+                "Cleared %s pending cancellation request(s) after sub-agent cleanup.",
+                cleared,
+            )
+
+    if propagate_cancellation:
+        raise asyncio.CancelledError()
 
 def generate_python(workflow):
     serialized = pformat(workflow, width=100, sort_dicts=False)

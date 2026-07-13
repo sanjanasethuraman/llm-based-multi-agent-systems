@@ -50,7 +50,7 @@ const providerOptions = [
 const providerDefaults = {
   huggingface: {
     baseUrl: "https://router.huggingface.co/v1",
-    model: "mistralai/Mistral-7B-Instruct-v0.3",
+    model: "Qwen/Qwen3-8B",
   },
   ollama: {
     baseUrl: "http://127.0.0.1:11434",
@@ -1152,6 +1152,15 @@ function WorkflowApp() {
       />
 
       <section className="post-kg-console" aria-label="Workflow evidence and output console">
+        {comparisonReports.length > 0 && (
+          <section className="comparison-panel">
+            <div className="comparison-header">
+              <h2>Workflow Comparison Report</h2>
+              <p>{comparisonReports.length} workflows executed</p>
+            </div>
+            <ComparisonReport reports={comparisonReports} />
+          </section>
+        )}
         <div className="post-kg-console__heading">
           <span>Execution console</span>
           <h2>Outputs, Evidence, and Tool Activity</h2>
@@ -1177,16 +1186,6 @@ function WorkflowApp() {
           onLoadAnswerGraph={loadAnswerGraphFromEvidence}
           onOpenGraph={openKnowledgeGraph}
         />
-
-        {comparisonReports.length > 0 && (
-          <section className="comparison-panel">
-            <div className="comparison-header">
-              <h2>Workflow Comparison Report</h2>
-              <p>{comparisonReports.length} workflows executed</p>
-            </div>
-            <ComparisonReport reports={comparisonReports} />
-          </section>
-        )}
 
         <section className="code-panel">
           <div className="code-header">
@@ -1394,7 +1393,7 @@ function ConfigPanel({
                 value={config.model || ""}
                 placeholder={config.provider === "huggingface" ? "mistralai/Mistral-7B-Instruct-v0.3" : "llama3.2:1b"}
                 onChange={(event) => updateConfig({ model: event.target.value })}
-              />
+                />
             </label>
             {config.provider === "huggingface" && (
               <label>
@@ -1661,7 +1660,7 @@ function ConfigPanel({
                 value={config.model || ""}
                 placeholder={config.provider === "huggingface" ? "mistralai/Mistral-7B-Instruct-v0.3" : "llama3.2:1b"}
                 onChange={(event) => updateConfig({ model: event.target.value })}
-              />
+                />
             </label>
             {config.provider === "huggingface" && (
               <label>
@@ -2150,7 +2149,7 @@ function ResultPanels({ output, logs, stats, nodeResults, retrievals, selectedDi
                     <StatusBadge status={node.status || "idle"} />
                   </div>
                   <div className="node-result-meta">
-                    <span>{node.durationMs?.toFixed(2) ?? "0"}ms</span>
+                    <span>{stats?.durations[node.id]/1e9?.toFixed(2) ?? "0"}s</span>
                     {node.message ? <span>{node.message}</span> : null}
                   </div>
                   <pre>{node.outputPreview || "No preview available."}</pre>
@@ -2200,6 +2199,8 @@ function WorkflowStatsPanel({ stats, retrievals }) {
     [retrievals],
   );
 
+  const totalInputTokens = Object.values(stats?.tokens ?? {}).reduce((sum, agent) => sum + agent.inputTokens, 0);
+  const totalOutputTokens = Object.values(stats?.tokens ?? {}).reduce((sum, agent) => sum + agent.outputTokens, 0);
   const metricCards = [
     { label: "Workflow runtime", value: stats?.runtimeMs, unit: "ms", key: "runtimeMs" },
     { label: "Nodes executed", value: stats?.nodesExecuted, unit: "", key: "nodesExecuted" },
@@ -2211,7 +2212,8 @@ function WorkflowStatsPanel({ stats, retrievals }) {
     { label: "Retriever nodes", value: retrieverNodes, unit: "", key: "retrieverNodes" },
     { label: "Collections retrieved", value: retrievalCollections, unit: "", key: "retrievalCollections" },
     { label: "Hit retrievals", value: retrievalsWithMatches, unit: "", key: "retrievalsWithMatches" },
-    { label: "Tokens est.", value: stats?.estimatedTokens, unit: "", key: "estimatedTokens" },
+    { label: "Input-Tokens", value: totalInputTokens, unit: "", key: "inputTokens" },
+    { label: "Output-Tokens", value: totalOutputTokens, unit: "", key: "outputTokens" },
   ];
 
   const [selectedMetric, setSelectedMetric] = useState(metricCards[0].key);
@@ -2254,7 +2256,8 @@ function WorkflowStatsPanel({ stats, retrievals }) {
           {selected.key === "retrieverNodes" && "Number of retriever nodes that participated in this run."}
           {selected.key === "retrievalCollections" && "Distinct vector collections queried during retrieval."}
           {selected.key === "retrievalsWithMatches" && "Retriever executions that returned at least one matched chunk."}
-          {selected.key === "estimatedTokens" && "Rough total token usage estimated from generated and retrieved text."}
+          {selected.key === "inputTokens" && "Total input tokens that were processed."}
+          {selected.key === "outputTokens" && "Total output tokens that were processed."}
         </p>
       </div>
     </section>
@@ -2290,7 +2293,7 @@ function NodeStatsPanel({ nodeResults, stats, workflow }) {
   }
 
   const nodesSorted = [...nodes].sort((a, b) => (b.durationMs || 0) - (a.durationMs || 0));
-  const durations = nodes.map((node) => node.durationMs || 0);
+  const durations = nodes.map((node) => stats?.durations[node.id]/1e9 || 0);
   const maxDuration = Math.max(...durations, 1);
   const totalDuration = durations.reduce((sum, value) => sum + value, 0);
   const averageDuration = (totalDuration / nodes.length).toFixed(2);
@@ -2298,7 +2301,7 @@ function NodeStatsPanel({ nodeResults, stats, workflow }) {
   const typeStats = Object.values(
     nodes.reduce((acc, node) => {
       const type = node.type || "unknown";
-      const duration = node.durationMs || 0;
+      const duration = type == "agent" ? stats?.durations[node.id]/1e9 || 0 : node.durationMs || 0;
       if (!acc[type]) {
         acc[type] = { type, count: 0, totalDuration: 0 };
       }
@@ -2313,6 +2316,8 @@ function NodeStatsPanel({ nodeResults, stats, workflow }) {
 
   const nodeTypes = ["all", ...new Set(nodes.map((node) => node.type || "unknown"))];
   const filteredNodes = selectedType === "all" ? nodes : nodes.filter((node) => node.type === selectedType);
+  const filteredSortedNodes = selectedType === "all" ? nodesSorted : nodesSorted.filter((node) => node.type === selectedType);
+  const filteredTypeStats = selectedType === "all" ? typeStats : typeStats.filter((node) => node.type === selectedType);
 
   const renderTabContent = () => {
     switch (activeTab) {
@@ -2327,14 +2332,40 @@ function NodeStatsPanel({ nodeResults, stats, workflow }) {
                 onMouseLeave={() => setFocusedNode(null)}
               >
                 <div className="node-stat-summary-header">
-                  <strong>{node.label}</strong>
+                  <div className="node-stat-summary-title">
+                    <strong>{node.label}</strong>
+                    <span className="node-stat-summary-meta">
+                      <span className="node-type-label">{node.type}</span>
+                      <code>{node.id}</code>
+                    </span>
+                  </div>
                   <StatusBadge status={node.status || "idle"} />
                 </div>
-                <span>{node.type}: {node.id}</span>
                 <div className="node-stat-summary-values">
-                  <strong>{(node.durationMs || 0).toFixed(2)}ms</strong>
-                  <span>{node.outputPreview ? "Output available" : "No output"}</span>
+                  <div className="node-stat-metric">
+                    <span>Duration</span>
+                    <strong>
+                      {stats?.durations?.[node.id] != null
+                        ? (stats.durations[node.id] / 1e9).toFixed(3)
+                        : ((node.durationMs || 0) / 1000).toFixed(3)}s
+                    </strong>
+                  </div>
+                  {["agent", "sub_agent"].includes(node.type) && (
+                    <>
+                      <div className="node-stat-metric">
+                        <span>Input tokens</span>
+                        <strong>{stats?.tokens?.[node.id]?.inputTokens ?? 0}</strong>
+                      </div>
+                      <div className="node-stat-metric">
+                        <span>Output tokens</span>
+                        <strong>{stats?.tokens?.[node.id]?.outputTokens ?? 0}</strong>
+                      </div>
+                    </>
+                  )}
                 </div>
+                <span className={`node-output-availability ${node.outputPreview ? "available" : "empty"}`}>
+                  {node.outputPreview ? "Output available" : "No output"}
+                </span>
               </article>
             ))}
           </div>
@@ -2342,7 +2373,7 @@ function NodeStatsPanel({ nodeResults, stats, workflow }) {
       case "slowest":
         return (
           <div className="node-ranking-list">
-            {nodesSorted.slice(0, 8).map((node, index) => (
+            {filteredSortedNodes.slice(0, 8).map((node, index) => (
               <div
                 key={node.id}
                 className={`node-ranking-item ${focusedNode === node.id ? "focused" : ""}`}
@@ -2354,7 +2385,7 @@ function NodeStatsPanel({ nodeResults, stats, workflow }) {
                   <strong>{node.label}</strong>
                   <div className="node-ranking-meta">
                     <span>{node.type}: {node.id}</span>
-                    <span>{(node.durationMs || 0).toFixed(2)}ms</span>
+                    <span>{node.type == "agent" ? (stats?.durations[node.id]/1e9 || 0).toFixed(3) : node.durationMs || 0}s</span>
                   </div>
                 </div>
                 <StatusBadge status={node.status || "idle"} />
@@ -2365,12 +2396,12 @@ function NodeStatsPanel({ nodeResults, stats, workflow }) {
       case "type":
         return (
           <div className="type-breakdown-list">
-            {typeStats.map((typeStat) => (
+            {filteredTypeStats.map((typeStat) => (
               <article key={typeStat.type} className="type-breakdown-item">
                 <strong>{typeStat.type}</strong>
                 <span>{typeStat.count} node{typeStat.count === 1 ? "" : "s"}</span>
-                <span>{typeStat.totalDuration.toFixed(2)}ms total</span>
-                <span>{typeStat.averageDuration.toFixed(2)}ms avg</span>
+                <span>{typeStat.totalDuration.toFixed(2)}s total</span>
+                <span>{typeStat.averageDuration.toFixed(2)}s avg</span>
               </article>
             ))}
           </div>
@@ -2378,7 +2409,7 @@ function NodeStatsPanel({ nodeResults, stats, workflow }) {
       default:
         return (
           <div className="chart-grid">
-            {nodesSorted.map((node) => (
+            {filteredSortedNodes.map((node) => (
               <div
                 key={node.id}
                 className={`chart-row ${focusedNode === node.id ? "focused" : ""}`}
@@ -2392,10 +2423,10 @@ function NodeStatsPanel({ nodeResults, stats, workflow }) {
                 <div className="chart-bar">
                   <div
                     className="chart-fill"
-                    style={{ width: `${((node.durationMs || 0) / maxDuration) * 100}%` }}
+                    style={{ width: `${((node.type == "agent" ? (stats?.durations[node.id]/1e9 || 0).toFixed(3) : node.durationMs || 0) / maxDuration) * 100}%` }}
                   />
                 </div>
-                <span className="chart-value">{(node.durationMs || 0).toFixed(2)}ms</span>
+                <span className="chart-value">{node.type == "agent" ? (stats?.durations[node.id]/1e9 || 0).toFixed(3) : node.durationMs || 0}s</span>
               </div>
             ))}
           </div>
@@ -2421,7 +2452,7 @@ function NodeStatsPanel({ nodeResults, stats, workflow }) {
           <span>Total runtime</span>
         </div>
         <div className="stat-card">
-          <strong>{averageDuration}ms</strong>
+          <strong>{averageDuration}s</strong>
           <span>Avg node duration</span>
         </div>
         <div className="stat-card">

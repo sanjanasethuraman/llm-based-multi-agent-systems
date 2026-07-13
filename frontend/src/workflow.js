@@ -101,7 +101,7 @@ const DEFAULT_CONFIGS = {
     embeddingModel: "nomic-embed-text",
     baseUrl: "http://127.0.0.1:11434",
   },
-  tool: { name: "Tool", toolType: "echo" },
+  tool: { name: "Tool", toolName: "echo" },
   sub_agent: {
     name: "Sub-Agent",
     provider: "ollama",

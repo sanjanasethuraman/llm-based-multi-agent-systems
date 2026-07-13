@@ -1,4 +1,5 @@
 import { ChevronDown, ChevronUp, Copy, Download } from 'lucide-react';
+import {ResponsiveContainer, BarChart, XAxis, YAxis, Tooltip, Legend, Bar, PieChart, Pie, Cell} from 'recharts';
 import { useState } from 'react';
 import './ComparisonReport.css';
 
@@ -36,10 +37,76 @@ export default function ComparisonReport({ reports = [] }) {
     navigator.clipboard.writeText(json);
   };
 
+  const workflows = reports;
+
+  const runtimeData = workflows.map(wf => ({
+    name: wf.workflowName,
+    runtime: +(wf.stats?.runtimeMs / 1000).toFixed(2)
+  }));
+
+  const executionData = workflows.map(wf => ({
+    name: wf.workflowName,
+    agents: wf.stats?.agentCalls,
+    sub_agents: wf.stats?.subAgentCalls,
+    tools: wf.stats?.toolCalls,
+    retrievers: wf.stats?.retrieverCalls
+  }));
+
+  const tokenData = workflows.map(wf => {
+    let input = 0;
+    let output = 0;
+
+    Object.values(wf.stats?.tokens ?? {}).forEach(t => {
+      input += t.inputTokens;
+      output += t.outputTokens;
+    });
+
+    return {
+      name: wf.workflowName,
+      tokens: [
+        {
+          name: "Input Tokens",
+          value: input
+        },
+        {
+          name: "Output Tokens",
+          value: output
+        }
+      ]
+    };
+  });
+  const agentDurationData = [];
+  const agents = new Set();
+
+  workflows.forEach(wf=>{
+    Object.keys(wf.stats?.durations ?? {})
+      .forEach(a=>agents.add(a));
+  });
+
+  agents.forEach(agent=>{
+    let row={
+      agent
+    };
+    workflows.forEach(wf=>{
+      row[wf.workflowName] =
+        wf.stats?.durations[agent]
+          ? +(wf.stats?.durations[agent]/1e9).toFixed(2)
+          : 0;
+    });
+    agentDurationData.push(row);
+  });
+
+  const chartColors=[
+  "#112d33",
+  "#305d70",
+  "#facc15",
+  "#f472b6",
+  "#a78bfa"
+  ];
+
   return (
     <div className="comparison-report">
       <div className="report-header">
-        <h3>Workflow Comparison Report</h3>
         <div className="report-actions">
           <button onClick={copyToClipboard} title="Copy to clipboard">
             <Copy size={14} />
@@ -51,230 +118,319 @@ export default function ComparisonReport({ reports = [] }) {
       </div>
 
       <div className="comparison-grid">
-        {/* Summary */}
-        <div className="comparison-section">
-          <h4>Summary</h4>
-          <table className="comparison-table">
-            <thead>
-              <tr>
-                <th>Workflow</th>
-                <th>Status</th>
-                <th>Duration</th>
-                <th>Timestamp</th>
-              </tr>
-            </thead>
-            <tbody>
-              {reports.map((report, idx) => (
-                <tr key={idx}>
-                  <td className="workflow-name">{report.workflowName}</td>
-                  <td>
-                    <span className={`status-badge ${report.status}`}>
-                      {report.status.toUpperCase()}
-                    </span>
-                  </td>
-                  <td>{formatDuration(report.durationMs)}</td>
-                  <td className="timestamp">
-                    {new Date(report.timestamp).toLocaleString()}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
 
-        {/* Execution Time Comparison */}
-        <div className="comparison-section">
-          <div
-            className="section-header"
-            onClick={() => toggleMetric('executionTime')}
-          >
-            <h4>Execution Time</h4>
-            {expandedMetrics['executionTime'] ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-          </div>
-          {expandedMetrics['executionTime'] && (
-            <div className="metric-content">
-              <table className="comparison-table">
-                <thead>
-                  <tr>
-                    <th>Workflow</th>
-                    <th>Duration (ms)</th>
-                    <th>Relative</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {(() => {
-                    const times = reports.map((r) => r.durationMs || 0);
-                    const minTime = Math.min(...times);
-                    const maxTime = Math.max(...times);
-                    return reports.map((report, idx) => (
-                      <tr key={idx}>
-                        <td>{report.workflowName}</td>
-                        <td>{report.durationMs || 'N/A'}ms</td>
-                        <td>
-                          <div className="progress-bar">
-                            <div
-                              className="progress-fill"
-                              style={{
-                                width: `${
-                                  ((report.durationMs || 0) / (maxTime || 1)) * 100
-                                }%`,
-                              }}
-                            />
-                          </div>
-                        </td>
-                      </tr>
-                    ));
-                  })()}
-                </tbody>
-              </table>
+        {/* Performance Metrics */}
+        <div className="workflow-comparison">
+          {reports.map((report, index) => (
+            <div class="workflow-card" key={index}>
+              <div class="header">
+                <h2>Workflow {index + 1}</h2>
+                <span className={`status-badge ${report.status}`}>
+                  {report.status.toUpperCase()}
+                </span>
+              </div>
+
+
+              <div class="stats-grid">
+                <div class="stat">
+                  <span class="label">Runtime</span>
+                  <span class="value">{report.stats?.runtimeMs.toFixed(0)} ms</span>
+                </div>
+
+                <div class="stat">
+                  <span class="label">Nodes Executed</span>
+                  <span class="value">{report.stats?.nodesExecuted}</span>
+                </div>
+
+                <div class="stat">
+                  <span class="label">Agent Calls</span>
+                  <span class="value">{report.stats?.agentCalls}</span>
+                </div>
+
+                <div class="stat">
+                  <span class="label">Sub-Agent Calls</span>
+                  <span class="value">{report.stats?.subAgentCalls}</span>
+                </div>
+
+                <div class="stat">
+                  <span class="label">Tool Calls</span>
+                  <span class="value">{report.stats?.toolCalls}</span>
+                </div>
+
+                <div class="stat">
+                  <span class="label">Retriever Calls</span>
+                  <span class="value">{report.stats?.retrieverCalls}</span>
+                </div>
+
+                <div class="stat">
+                  <span class="label">Input Tokens</span>
+                  <span class="value">{Object.values(report.stats?.tokens ?? {}).reduce((sum, agent) => sum + agent.inputTokens, 0)}</span>
+                </div>
+
+                <div class="stat">
+                  <span class="label">Output Tokens</span>
+                  <span class="value">{Object.values(report.stats?.tokens ?? {}).reduce((sum, agent) => sum + agent.outputTokens, 0)}</span>
+                </div>
+              </div>
+
+              <h3>Agent Durations</h3>
+
+              <div class="agent-list">
+                {Object.entries(report.stats?.durations ?? {}).map(([agent, duration]) => (
+                  <div class="agent-row" key={agent}>
+                    <span>{report.nodeResults[agent].label}</span>
+                    <span>{(duration / 1e9).toFixed(2)} s</span>
+                  </div>
+                ))}
+              </div>
+
+              <h3>Token Usage</h3>
+
+              <div class="agent-list">
+                {Object.entries(report.stats?.tokens ?? {}).map(([agent, token]) => (
+                  <div class="agent-row" key={agent}>
+                    <span>{report.nodeResults[agent].label}</span>
+                    <span>
+                      In: {token.inputTokens} | Out: {token.outputTokens}
+                    </span>
+                  </div>
+                ))}
+              </div>
             </div>
-          )}
+          ))}
         </div>
 
         {/* Output Comparison */}
         <div className="comparison-section">
-          <div
-            className="section-header"
-            onClick={() => toggleMetric('output')}
-          >
-            <h4>Output</h4>
-            {expandedMetrics['output'] ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-          </div>
-          {expandedMetrics['output'] && (
-            <div className="metric-content">
-              <table className="comparison-table output-table">
-                <tbody>
-                  {reports.map((report, idx) => (
-                    <tr key={idx}>
-                      <td className="workflow-col">{report.workflowName}:</td>
-                      <td>
-                        <div className="output-cell">
-                          {report.output ? (
-                            <pre>{truncate(report.output, 200)}</pre>
-                          ) : (
-                            <em>No output</em>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
+          <div className="metric-content">
+            <div className="workflow-comparison">
+              {reports.map((report, index) => (
+                <div className="workflow-card" key={index}>
+                  <h2>{report.workflowName}</h2>
 
-        {/* Performance Metrics */}
-        <div className="comparison-section">
-          <div
-            className="section-header"
-            onClick={() => toggleMetric('performance')}
-          >
-            <h4>Performance Metrics</h4>
-            {expandedMetrics['performance'] ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-          </div>
-          {expandedMetrics['performance'] && (
-            <div className="metric-content">
-              <table className="comparison-table">
-                <thead>
-                  <tr>
-                    <th>Workflow</th>
-                    <th>Nodes Executed</th>
-                    <th>Log Entries</th>
-                    <th>Retrievals</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {reports.map((report, idx) => (
-                    <tr key={idx}>
-                      <td>{report.workflowName}</td>
-                      <td>{report.stats?.executedNodes || 0}</td>
-                      <td>{(report.logs || []).length}</td>
-                      <td>{(report.retrievals || []).length}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-
-        {/* Logs & Events */}
-        <div className="comparison-section">
-          <div
-            className="section-header"
-            onClick={() => toggleMetric('logs')}
-          >
-            <h4>Logs & Events</h4>
-            {expandedMetrics['logs'] ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-          </div>
-          {expandedMetrics['logs'] && (
-            <div className="metric-content">
-              {reports.map((report, idx) => (
-                <div key={idx} className="log-section">
-                  <h5>{report.workflowName}</h5>
-                  <div className="log-list">
-                    {(report.logs || []).length > 0 ? (
-                      (report.logs || []).slice(0, 5).map((log, logIdx) => (
-                        <div key={logIdx} className="log-entry">
-                          <span className={`log-level ${log.level || 'info'}`}>
-                            {(log.level || 'INFO').toUpperCase()}
-                          </span>
-                          <span className="log-text">{truncate(log.message || '', 100)}</span>
-                        </div>
-                      ))
+                  <div className="output-card">
+                    {report.output ? (
+                      <pre>{report.output}</pre>
                     ) : (
-                      <em>No logs</em>
-                    )}
-                    {(report.logs || []).length > 5 && (
-                      <div className="log-more">
-                        +{(report.logs || []).length - 5} more logs
-                      </div>
+                      <em>No output</em>
                     )}
                   </div>
                 </div>
               ))}
             </div>
-          )}
+          </div>
         </div>
 
-        {/* Success/Failure States */}
-        <div className="comparison-section">
-          <div
-            className="section-header"
-            onClick={() => toggleMetric('status')}
-          >
-            <h4>Execution Status</h4>
-            {expandedMetrics['status'] ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-          </div>
-          {expandedMetrics['status'] && (
-            <div className="metric-content">
-              <table className="comparison-table">
-                <thead>
-                  <tr>
-                    <th>Workflow</th>
-                    <th>Status</th>
-                    <th>Message</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {reports.map((report, idx) => (
-                    <tr key={idx}>
-                      <td>{report.workflowName}</td>
-                      <td>
-                        <span className={`status-badge ${report.status}`}>
-                          {report.status.toUpperCase()}
-                        </span>
-                      </td>
-                      <td className="status-message">
-                        {report.statusMessage || '-'}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+        {/* Logs & Events */}
+        <div className="metric-content logs-grid">
+          {reports.map((report, idx) => (
+            <div key={idx} className="log-section">
+              <div className="log-header">
+                <h5>{report.workflowName}</h5>
+              </div>
+
+              <div className="log-list">
+                {(report.logs || []).length > 0 ? (
+                  (report.logs || []).slice(0, 5).map((log, logIdx) => (
+                    <div key={logIdx} className="log-entry">
+                      <span className={`log-level ${log.level || 'info'}`}>
+                        {(log.level || 'INFO').toUpperCase()}
+                      </span>
+
+                      <span className="log-text">
+                        {truncate(log.message || '', 100)}
+                      </span>
+                    </div>
+                  ))
+                ) : (
+                  <div className="no-logs">
+                    <em>No logs</em>
+                  </div>
+                )}
+
+                {(report.logs || []).length > 5 && (
+                  <div className="log-more">
+                    +{(report.logs || []).length - 5} more logs
+                  </div>
+                )}
+              </div>
             </div>
-          )}
+          ))}
+        </div>
+        <div className="comparison-section charts-section">
+          <div className="charts-grid">
+
+            {/* Runtime */}
+            <div className="chart-card">
+              <h3>Runtime Comparison</h3>
+
+              <ResponsiveContainer width="100%" height={250}>
+                <BarChart data={runtimeData}>
+                  <XAxis
+                    dataKey="name"
+                    stroke="#9aa7bd"
+                  />
+
+                  <YAxis
+                    stroke="#9aa7bd"
+                  />
+
+                  <Tooltip cursor= {{fill: "#9aa7bd"}}/>
+
+                  <Bar
+                    dataKey="runtime"
+                    fill="rgba(6, 95, 70, 0.24)"
+                    stroke="#35d49a"
+                    radius={[6,6,0,0]}
+                  />
+                </BarChart>
+              </ResponsiveContainer>
+
+            </div>
+
+
+
+            {/* Execution Metrics */}
+            <div className="chart-card">
+
+              <h3>Execution Metrics</h3>
+
+              <ResponsiveContainer width="100%" height={250}>
+                <BarChart data={executionData}>
+
+                  <XAxis
+                    dataKey="name"
+                    stroke="#9aa7bd"
+                  />
+
+                  <YAxis
+                    stroke="#9aa7bd"
+                  />
+
+                  <Tooltip cursor= {{fill: "#9aa7bd"}}/>
+
+                  <Legend />
+                  <Bar
+                    dataKey="agents"
+                    name="Agents"
+                    fill="rgba(73, 214, 255, 0.32)"
+                    stroke="#4db3d4"
+                  />
+
+                  <Bar
+                    dataKey="sub_agents"
+                    name="Sub-Agents"
+                    fill="rgba(73, 255, 213, 0.32)"
+                    stroke="rgba(73, 255, 213, 0.6)"
+                  />
+
+                  <Bar
+                    dataKey="tools"
+                    name="Tools"
+                    fill="#313030"
+                    stroke="#dfb357"
+                  />
+
+                  <Bar
+                    dataKey="retrievers"
+                    name="Retrievers"
+                    fill="#322542"
+                    stroke="#e471c2"
+                  />
+
+                </BarChart>
+              </ResponsiveContainer>
+
+            </div>
+
+
+
+
+            {/* Token Usage */}
+            <div className="chart-card">
+              <h3>Token Usage</h3>
+              <div className="pie-container">
+                {tokenData.map((workflow, index) => (
+                  <div key={workflow.name} className="workflow-pie">
+                    <h2>{workflow.name}</h2>
+
+                    <ResponsiveContainer width="100%" height={200}>
+                      <PieChart>
+                        <Pie
+                          data={workflow.tokens}
+                          dataKey="value"
+                          nameKey="name"
+                          cx="50%"
+                          cy="50%"
+                          outerRadius={70}
+                          label
+                        >
+                          <Cell fill="#305d70" />
+                          <Cell fill="#664b87" />
+                        </Pie>
+
+                        <Tooltip
+                          formatter={(value) => `${value} tokens`}
+                          cursor= {{fill: "#9aa7bd"}}
+                        />
+
+                        <Legend />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+
+
+
+            {/* Agent Duration */}
+            <div className="chart-card">
+
+              <h3>Agent Duration</h3>
+
+
+              <ResponsiveContainer width="100%" height={250}>
+
+                <BarChart data={agentDurationData}>
+
+                  <XAxis
+                    dataKey="agent"
+                    stroke="#9aa7bd"
+                  />
+
+                  <YAxis
+                    stroke="#9aa7bd"
+                    unit="s"
+                  />
+
+                  <Tooltip cursor= {{fill: "#9aa7bd"}}/>
+
+                  <Legend />
+
+                  {
+                    workflows.map((wf,index)=>(
+                      <Bar
+                        key={wf.workflowId}
+                        dataKey={wf.workflowName}
+                        fill={
+                          chartColors[index % chartColors.length]
+                        }
+                        stroke="#8e9bae52"
+                      />
+                    ))
+                  }
+
+                </BarChart>
+
+              </ResponsiveContainer>
+
+            </div>
+
+
+          </div>
+
         </div>
       </div>
     </div>

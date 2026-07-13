@@ -59,7 +59,7 @@ async def _ensure_registry(node_id, edges, nodes) -> SubAgentRegistry:
                     seen_servers.add(server_id)
 
             elif entry["type"] == "sub_agent":
-                server_id = f"sub-agent-{entry['node_id']}"
+                server_id = entry["server_id"]
                 if server_id not in seen_servers:
                     # already running — just proxy through main server
                     await registry.add_proxy_client(server_id)
@@ -78,14 +78,18 @@ async def _run_agent(node_id, agent_config, edges, nodes, user_input):
     if provider_name in {"mock", "api"}:
         provider_name = "ollama"
     provider = get_agent_provider(provider_name)
-    result, _, _, _, _ = await provider.run(
+    result, stats = await provider.run(
         config=agent_config,
         incoming=user_input,
         mcp_registry=registry,
         available_tools=available,
     )
     logger.info(f"Sub-agent '{agent_config.get('name')}' returning result")
-    return result
+    payload = json.dumps({
+        "text": result,
+        "stats": stats,
+    })
+    return payload
 
 
 def create_sub_agent_server(node_id, agent_config, edges, nodes):

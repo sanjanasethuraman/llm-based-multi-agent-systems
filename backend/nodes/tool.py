@@ -22,10 +22,10 @@ class ToolNodeExecutor(NodeExecutor):
 
         config = node.get("config", {})
         incoming = collect_incoming(node["id"], context["edges"], context["values"], context["nodes"])
-        tool = get_tool(config.get("toolType", "echo"))
+        tool = get_tool(config.get("toolName", "echo"))
         if not tool:
-            log_node(node["id"], context, f"Tool '{config.get('toolType')}' not found.", status="error", node_type=node.get("type"))
-            return "", {"status": "error", "message": f"Tool '{config.get('toolType')}' not found."}
+            log_node(node["id"], context, f"Tool '{config.get('toolName')}' not found.", status="error", node_type=node.get("type"))
+            return "", {"status": "error", "message": f"Tool '{config.get('toolName')}' not found."}
         result = tool.execute(incoming)
-        log_node(node["id"], context, f"Tool '{config.get('name') or config.get('toolType')}' executed with input length {len(str(incoming))}.", status="completed", node_type=node.get("type"))
-        return result, {"status": "completed", "message": f"Tool '{config.get('name') or config.get('toolType')}' executed successfully."}
+        log_node(node["id"], context, f"Tool '{config.get('name') or config.get('toolName')}' executed with input length {len(str(incoming))}.", status="completed", node_type=node.get("type"))
+        return result, {"status": "completed", "message": f"Tool '{config.get('name') or config.get('toolName')}' executed successfully."}

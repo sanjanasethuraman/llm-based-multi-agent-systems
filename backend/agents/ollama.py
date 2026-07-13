@@ -1,3 +1,5 @@
+from backend.agents.proxy_tool_client import ProxyToolClient
+
 from .base import AgentProvider
 import json
 from ollama import chat, ChatResponse
@@ -21,12 +23,25 @@ class OllamaProvider(AgentProvider):
     MAX_ITERATIONS = 10
 
     async def run(self, config, incoming, mcp_registry, available_tools: list[dict]):
+        stats = {
+            "toolCalls": 0,
+            "subAgentCalls": 0,
+            "calledTools": [],
+            "providerLogs": [],
+            "totalDuration": 0,
+            "inputTokens": 0,
+            "outputTokens": 0,
+        }
+        sub_agent_stats = {}
         tool_calls = 0
         sub_agent_calls = 0
         called_tools = []
         provider_logs = []
+        total_duration = 0
+        input_tokens = 0
+        output_tokens = 0
         model = config.get("model", "llama3.2:1b")
-        messages = [{"role": "system", "content": config.get("systemPrompt", "You are a helpful assistant.")}] 
+        messages = [{"role": "system", "content": config.get("systemPrompt", "You are a helpful assistant.")}]
 
         provider_logs.append({
             "status": "info",
@@ -66,7 +81,7 @@ class OllamaProvider(AgentProvider):
                 if (server_id, tool.name) in available:
                     ollama_tools.append(self._to_ollama_schema(tool))
                     tool_map[tool.name] = (server_id, client)
-        
+
         think_enabled = _coerce_think(config.get("think", False))
 
         for _ in range(self.MAX_ITERATIONS):
@@ -93,8 +108,23 @@ class OllamaProvider(AgentProvider):
                     )
                 message = f"Ollama chat failed for model '{model}': {exc}.{hint}"
                 provider_logs.append({"status": "error", "message": message})
-                return f"[Ollama error] {message}", tool_calls, sub_agent_calls, called_tools, provider_logs
+                stats.update({
+                    "toolCalls": tool_calls,
+                    "subAgentCalls": sub_agent_calls,
+                    "calledTools": called_tools,
+                    "providerLogs": provider_logs,
+                    "totalDuration": total_duration,
+                    "inputTokens": input_tokens,
+                    "outputTokens": output_tokens,
+                    "subAgentStats": sub_agent_stats | {},
+                })
+                return f"[Ollama error] {message}", stats
             logger.info(f"Response: {response}")
+
+            total_duration += response.total_duration or 0
+            input_tokens += response.prompt_eval_count or 0
+            output_tokens += response.eval_count or 0
+
             messages.append(response.message)
             if response.message.tool_calls:
                 for tool_call in response.message.tool_calls:
@@ -118,7 +148,6 @@ class OllamaProvider(AgentProvider):
                     server_id, client = tool_map[name]
                     # Distinguish between normal tools and sub-agent tools by server id
                     if str(server_id).startswith("sub-agent-"):
-                        sub_agent_calls += 1
                         provider_logs.append({
                             "status": "info",
                             "message": f"Ollama requested sub-agent tool '{name}' on server '{server_id}'.",
@@ -136,18 +165,52 @@ class OllamaProvider(AgentProvider):
                     })
 
                     try:
-                        result = await asyncio.wait_for(
+                        raw = await asyncio.wait_for(
                             client.call_tool(name, tool_call.function.arguments or {}),
                             timeout=300.0
                         )
                     except asyncio.TimeoutError:
                         logger.error(f"Tool call {name} timed out")
-                        result = {"error": "Tool call timed out"}
-                    
+                        raw = {"error": "Tool call timed out"}
+
+                    if isinstance(raw, str):
+                        try:
+                            parsed = json.loads(raw)
+                            if isinstance(parsed, dict) and "text" in parsed and "stats" in parsed:
+                                raw = parsed
+                        except (json.JSONDecodeError, TypeError):
+                            pass
+
+                    if isinstance(raw, dict) and "stats" in raw:
+                        sub_stats = raw["stats"]
+                        tool_calls += sub_stats.get("toolCalls", 0)
+                        sub_agent_calls += sub_stats.get("subAgentCalls", 0) + 1
+                        called_tools.extend(sub_stats.get("calledTools", []))
+                        provider_logs.extend(sub_stats.get("providerLogs", []))
+                        sub_agent_stats.setdefault(server_id, {
+                            "totalDuration": 0,
+                            "inputTokens": 0,
+                            "outputTokens": 0,
+                        })
+
+                        sub_agent_stats[server_id]["totalDuration"] += sub_stats.get("totalDuration", 0)
+                        sub_agent_stats[server_id]["inputTokens"] += sub_stats.get("inputTokens", 0)
+                        sub_agent_stats[server_id]["outputTokens"] += sub_stats.get("outputTokens", 0)
+
+                        self._merge_sub_agent_stats(sub_agent_stats, sub_stats.get("subAgentStats", {}))
+                        result_text = raw.get("result") or raw.get("text") or ""
+                        provider_logs.append({
+                            "status": "info",
+                            "message": f"Sub-agent '{name}' completed with {sub_stats.get('toolCalls', 0)} tool call(s) and {sub_stats.get('subAgentCalls', 0)} sub-agent call(s).",
+                        })
+                    elif isinstance(raw, dict) and "error" in raw:
+                        result_text = json.dumps(raw)
+                    else:
+                        result_text = str(raw) if raw is not None else ""
                     messages.append({
                         "role": "tool",
                         "name": tool_call.function.name,
-                        "content": json.dumps({"result": result}),
+                        "content": json.dumps({"result": result_text}),
                     })
             else:
                 logger.info("No tool calls, breaking out of loop.")
@@ -156,14 +219,24 @@ class OllamaProvider(AgentProvider):
                     "message": "Ollama returned no tool calls.",
                 })
                 break
+        stats.update({
+            "toolCalls": tool_calls,
+            "subAgentCalls": sub_agent_calls,
+            "calledTools": called_tools,
+            "providerLogs": provider_logs,
+            "totalDuration": total_duration,
+            "inputTokens": input_tokens,
+            "outputTokens": output_tokens,
+            "subAgentStats": sub_agent_stats | {}
+        })
         content = (response.message.content or "").strip()
         if not content:
             provider_logs.append({
                 "status": "warning",
                 "message": "Ollama returned an empty message.",
             })
-        return content, tool_calls, sub_agent_calls, called_tools, provider_logs
-    
+        return content, stats
+
     def _to_ollama_schema(self, tool) -> dict:
         """Convert an MCP Tool object to Ollama's expected tool schema."""
         return {
@@ -174,3 +247,20 @@ class OllamaProvider(AgentProvider):
                 "parameters": tool.inputSchema,
             }
         }
+    def _merge_sub_agent_stats(self, target: dict, sub_agent_stats_dict: dict):
+        """
+        Merge all sub-agent stats recursively
+        """
+        for nested_server_id, nested_stats in sub_agent_stats_dict.items():
+            target.setdefault(nested_server_id, {
+                "totalDuration": 0,
+                "inputTokens": 0,
+                "outputTokens": 0,
+            })
+            target[nested_server_id]["totalDuration"] += nested_stats.get("totalDuration", 0)
+            target[nested_server_id]["inputTokens"] += nested_stats.get("inputTokens", 0)
+            target[nested_server_id]["outputTokens"] += nested_stats.get("outputTokens", 0)
+
+            deeper = nested_stats.get("subAgentStats", {})
+            if deeper:
+                self._merge_sub_agent_stats(target, deeper)
