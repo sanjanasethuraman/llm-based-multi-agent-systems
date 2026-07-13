@@ -134,7 +134,7 @@ def get_all_tools(nodes, edges) -> list[dict]:
             tools.append({
                 "type": "sub_agent",
                 "node_id": node_id,
-                "server_id": f"sub-agent-{node_id}",
+                "server_id": config.get("_serverId") or f"sub-agent-{node_id}",
                 "tool_name": f"run_{config.get('name', 'agent')}",
                 "config": config,
             })
@@ -169,7 +169,7 @@ def get_available_tools(node_id, edges, nodes) -> list[dict]:
             tools.append({
                 "type": "sub_agent",
                 "node_id": target_node.get("id"),
-                "server_id": f"sub-agent-{target_node.get('id')}",
+                "server_id": config.get("_serverId") or f"sub-agent-{target_node.get('id')}",
                 "tool_name": f"run_{config.get('name', 'agent')}",
                 "config": config,
             })
@@ -201,6 +201,9 @@ def get_node_id_from_server_id(server_id, nodes):
         config = node.get("config", {})
         if node.get("type") == "tool" and config.get("serverId") == server_id:
             return node_id
-        elif node.get("type") == "sub_agent" and f"sub-agent-{node_id}" == server_id:
+        elif (
+            node.get("type") == "sub_agent"
+            and (config.get("_serverId") or f"sub-agent-{node_id}") == server_id
+        ):
             return node_id
     return None

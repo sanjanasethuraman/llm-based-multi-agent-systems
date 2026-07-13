@@ -48,7 +48,7 @@ async def _ensure_registry(node_id, edges, nodes) -> SubAgentRegistry:
                     seen_servers.add(server_id)
 
             elif entry["type"] == "sub_agent":
-                server_id = f"sub-agent-{entry['node_id']}"
+                server_id = entry["server_id"]
                 if server_id not in seen_servers:
                     # already running — just proxy through main server
                     await registry.add_proxy_client(server_id)
