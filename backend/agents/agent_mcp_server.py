@@ -3,6 +3,8 @@ import asyncio
 import logging
 import json
 import os
+import tempfile
+from pathlib import Path
 
 from mcp.server.fastmcp import FastMCP
 from contextlib import asynccontextmanager
@@ -15,6 +17,15 @@ logger = logging.getLogger(__name__)
 
 _registry: SubAgentRegistry | None = None
 _registry_lock: asyncio.Lock | None = None
+
+
+def open_startup_log():
+    log_dir = Path(tempfile.gettempdir()) / "visual-mas"
+    try:
+        log_dir.mkdir(parents=True, exist_ok=True)
+        return (log_dir / "sub-agent-startup.log").open("w", buffering=1, encoding="utf-8")
+    except OSError:
+        return sys.stderr
 
 
 async def _ensure_registry(node_id, edges, nodes) -> SubAgentRegistry:
@@ -63,7 +74,10 @@ async def _run_agent(node_id, agent_config, edges, nodes, user_input):
     registry = await _ensure_registry(node_id, edges, nodes)
     available = get_available_tools(node_id, edges, nodes)
 
-    provider = get_agent_provider(agent_config.get("provider", "mock"))
+    provider_name = agent_config.get("provider", "ollama")
+    if provider_name in {"mock", "api"}:
+        provider_name = "ollama"
+    provider = get_agent_provider(provider_name)
     result, stats = await provider.run(
         config=agent_config,
         incoming=user_input,
@@ -122,7 +136,7 @@ def create_sub_agent_server(node_id, agent_config, edges, nodes):
 
 
 if __name__ == "__main__":
-    _crash_log = open("/tmp/sub-agent-startup.log", "w", buffering=1)
+    _crash_log = open_startup_log()
 
     def _log(msg):
         print(msg, file=_crash_log, flush=True)

@@ -4,39 +4,39 @@ import ActionButton from "./ui/ActionButton.jsx";
 import StatusPill from "./ui/StatusPill.jsx";
 
 const journeySteps = [
-  "Load demo workflow",
-  "Inspect agents/tools",
-  "Run workflow",
-  "Explore retrieved context",
-  "Open graph evidence",
+  { label: "Load demo workflow", action: "load" },
+  { label: "Inspect agents/tools", action: "inspect" },
+  { label: "Run workflow", action: "run" },
+  { label: "Explore retrieved context", action: "evidence" },
+  { label: "Open graph evidence", action: "graph" },
 ];
 
 const quickStarts = [
   {
     key: "review_pipeline_workflow",
-    title: "Job Search Workflow",
-    description: "A compact agent/tool pipeline for reviewing and transforming a brief.",
+    fallbackTitle: "Review Pipeline",
+    fallbackDescription: "Drafts live release notes with a local LLM agent.",
     icon: GitBranch,
     accent: "blue",
   },
   {
     key: "rag_qa_workflow",
-    title: "RAG Pipeline",
-    description: "Load a retriever workflow and inspect vector context after running.",
+    fallbackTitle: "RAG Q&A",
+    fallbackDescription: "Retrieves context from the course_docs collection before answering.",
     icon: Database,
     accent: "green",
   },
   {
     key: "primekg_migraine_graph_rag_workflow",
-    title: "PrimeKG Migraine Graph RAG",
-    description: "Show hybrid retrieval with biomedical graph evidence paths.",
+    fallbackTitle: "PrimeKG Migraine Graph RAG",
+    fallbackDescription: "Demo workflow for querying a filtered PrimeKG migraine subgraph imported into Neo4j.",
     icon: BrainCircuit,
     accent: "violet",
   },
   {
     key: "mcp_tool_workflow",
-    title: "MCP Tool Demo",
-    description: "Demonstrate tool calls, arguments, and results inside the workflow.",
+    fallbackTitle: "MCP Tool Demo",
+    fallbackDescription: "Uses a live local LLM agent to write a demo note.",
     icon: Wrench,
     accent: "amber",
   },
@@ -51,9 +51,30 @@ export default function GuidedDemoPanel({
   onRunWorkflow,
   workflowLoaded,
 }) {
-  const exampleNames = new Set(examples.map((example) => example.name));
-  const activeStep = workflowLoaded ? 2 : 1;
+  const examplesByName = new Map(examples.map((example) => [example.name, example]));
   const [open, setOpen] = useState(false);
+  const defaultDemoKey = quickStarts.find((card) => examplesByName.has(card.key))?.key || examples[0]?.name || "";
+  const readyByAction = {
+    load: Boolean(defaultDemoKey),
+    inspect: workflowLoaded,
+    run: workflowLoaded,
+    evidence: workflowLoaded,
+    graph: workflowLoaded,
+  };
+
+  function handleJourneyStep(action) {
+    if (action === "load" && defaultDemoKey) {
+      onLoadExample(defaultDemoKey);
+    } else if (action === "inspect") {
+      document.querySelector(".workspace")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    } else if (action === "run") {
+      onRunWorkflow();
+    } else if (action === "evidence") {
+      onOpenEvidence();
+    } else if (action === "graph") {
+      onOpenGraph();
+    }
+  }
 
   return (
     <section className={`guided-demo-panel ${open ? "open" : ""}`}>
@@ -67,10 +88,16 @@ export default function GuidedDemoPanel({
 
         <div className="guided-journey" aria-label="Demo journey steps">
           {journeySteps.map((step, index) => (
-            <div key={step} className={index + 1 <= activeStep ? "active" : ""}>
+            <button
+              key={step.label}
+              type="button"
+              className={readyByAction[step.action] ? "active" : ""}
+              onClick={() => handleJourneyStep(step.action)}
+              disabled={step.action === "load" && !defaultDemoKey}
+            >
               <span>{index + 1}</span>
-              <strong>{step}</strong>
-            </div>
+              <strong>{step.label}</strong>
+            </button>
           ))}
         </div>
       </div>
@@ -88,13 +115,16 @@ export default function GuidedDemoPanel({
         <div className="quick-start-grid">
           {quickStarts.map((card) => {
             const Icon = card.icon;
-            const available = exampleNames.has(card.key);
+            const example = examplesByName.get(card.key);
+            const available = Boolean(example);
+            const title = example?.label || card.fallbackTitle;
+            const description = example?.description || card.fallbackDescription;
             return (
               <article className={`quick-start-card ${card.accent}`} key={card.key}>
                 <div className="quick-start-icon"><Icon size={18} aria-hidden="true" /></div>
                 <div>
-                  <h3>{card.title}</h3>
-                  <p>{card.description}</p>
+                  <h3>{title}</h3>
+                  <p>{description}</p>
                 </div>
                   <div className="quick-start-actions">
                   <ActionButton variant="secondary" disabled={!available} onClick={() => onLoadExample(card.key)}>

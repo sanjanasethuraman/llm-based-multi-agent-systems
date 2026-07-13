@@ -9,8 +9,9 @@ export const NODE_TYPES = {
 };
 
 const VALID_VECTOR_BACKENDS = new Set(["auto", "chroma", "local-json-fallback", "faiss"]);
-const VALID_AGENT_PROVIDERS = new Set(["mock", "ollama", "huggingface", "api"]);
+const LIVE_AGENT_PROVIDERS = new Set(["ollama", "huggingface"]);
 const VALID_RETRIEVAL_MODES = new Set(["vector", "graph", "hybrid"]);
+const VALID_GRAPH_ANSWER_MODES = new Set(["grounded", "hybrid"]);
 
 export const DEFAULT_WORKFLOW = {
   nodes: [
@@ -28,7 +29,7 @@ export const DEFAULT_WORKFLOW = {
       position: { x: 290, y: 150 },
       config: {
         name: "Planner Agent",
-        provider: "mock",
+        provider: "ollama",
         model: "llama3.2:1b",
         baseUrl: "http://127.0.0.1:11434",
         huggingFaceToken: "",
@@ -45,7 +46,7 @@ export const DEFAULT_WORKFLOW = {
       position: { x: 520, y: 150 },
       config: {
         name: "Writer Agent",
-        provider: "mock",
+        provider: "ollama",
         model: "llama3.2:1b",
         baseUrl: "http://127.0.0.1:11434",
         huggingFaceToken: "",
@@ -54,13 +55,6 @@ export const DEFAULT_WORKFLOW = {
         think: false,
         systemPrompt: "Write a concise final response based on the plan.",
       },
-    },
-    {
-      id: "tool-1",
-      type: "tool",
-      label: "Word Count",
-      position: { x: 520, y: 285 },
-      config: { name: "Word Count", toolName: "word_count" },
     },
     {
       id: "output-1",
@@ -73,9 +67,7 @@ export const DEFAULT_WORKFLOW = {
   edges: [
     { source: "input-1", target: "agent-1" },
     { source: "agent-1", target: "agent-2" },
-    { source: "agent-2", target: "tool-1" },
     { source: "agent-2", target: "output-1" },
-    { source: "tool-1", target: "output-1" },
   ],
 };
 
@@ -83,7 +75,7 @@ const DEFAULT_CONFIGS = {
   input: { text: "New user query" },
   agent: {
     name: "Agent",
-    provider: "mock",
+    provider: "ollama",
     model: "llama3.2:1b",
     baseUrl: "http://127.0.0.1:11434",
     huggingFaceToken: "",
@@ -101,6 +93,7 @@ const DEFAULT_CONFIGS = {
     topK: 3,
     graphHops: 1,
     graphTopK: 5,
+    graphAnswerMode: "grounded",
   },
   vector_db: {
     collection: "course_docs",
@@ -111,7 +104,7 @@ const DEFAULT_CONFIGS = {
   tool: { name: "Tool", toolName: "echo" },
   sub_agent: {
     name: "Sub-Agent",
-    provider: "mock",
+    provider: "ollama",
     model: "llama3.2:1b",
     baseUrl: "http://127.0.0.1:11434",
     huggingFaceToken: "",
@@ -143,7 +136,7 @@ export function normalizeWorkflow(rawWorkflow) {
       type: node.type || "agent",
       label: node.label || NODE_TYPES[node.type] || node.id || `Node ${index + 1}`,
       position: node.position || { x: 80 + index * 190, y: 180 },
-      config: { ...(DEFAULT_CONFIGS[node.type] || {}), ...(node.config || {}) },
+      config: normalizeNodeConfig(node.type, { ...(DEFAULT_CONFIGS[node.type] || {}), ...(node.config || {}) }),
     })),
     edges: edges
       .filter((edge) => edge?.source && edge?.target)
@@ -212,6 +205,10 @@ export function validateWorkflow(workflow) {
         errors.push(`Retriever ${node.label || node.id} has unsupported retrieval mode: ${retrievalMode}.`);
       }
       if (["graph", "hybrid"].includes(retrievalMode)) {
+        const answerMode = node.config?.graphAnswerMode || "grounded";
+        if (!VALID_GRAPH_ANSWER_MODES.has(answerMode)) {
+          errors.push(`Retriever ${node.label || node.id} has unsupported Graph-RAG answer mode: ${answerMode}.`);
+        }
         warnings.push(`Retriever ${node.label || node.id} uses Neo4j Graph RAG; make sure Neo4j is running and seeded.`);
       }
       const queryEdges = incoming.filter((edge) => nodeMap.get(edge.source)?.type !== "vector_db");
@@ -229,12 +226,9 @@ export function validateWorkflow(workflow) {
       }
     }
     if (node.type === "agent" || node.type === "sub_agent") {
-      const provider = node.config?.provider || "mock";
-      if (!VALID_AGENT_PROVIDERS.has(provider)) {
+      const provider = node.config?.provider || "ollama";
+      if (!LIVE_AGENT_PROVIDERS.has(provider)) {
         errors.push(`Agent ${node.label || node.id} has unsupported provider: ${provider}.`);
-      }
-      if (provider === "api") {
-        warnings.push(`Agent ${node.label || node.id} uses the placeholder api provider.`);
       }
       if (provider === "huggingface") {
         if (!node.config?.model) {
@@ -254,6 +248,13 @@ export function validateWorkflow(workflow) {
   }
 
   return { valid: errors.length === 0, errors, warnings };
+}
+
+function normalizeNodeConfig(type, config) {
+  if ((type === "agent" || type === "sub_agent") && !LIVE_AGENT_PROVIDERS.has(config.provider)) {
+    return { ...config, provider: "ollama" };
+  }
+  return config;
 }
 
 function hasCycle(nodes, edges) {

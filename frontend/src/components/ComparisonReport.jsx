@@ -129,7 +129,7 @@ export default function ComparisonReport({ reports = [] }) {
                   {report.status.toUpperCase()}
                 </span>
               </div>
-              
+
 
               <div class="stats-grid">
                 <div class="stat">
@@ -266,18 +266,18 @@ export default function ComparisonReport({ reports = [] }) {
 
               <ResponsiveContainer width="100%" height={250}>
                 <BarChart data={runtimeData}>
-                  <XAxis 
+                  <XAxis
                     dataKey="name"
                     stroke="#9aa7bd"
                   />
 
-                  <YAxis 
+                  <YAxis
                     stroke="#9aa7bd"
                   />
 
                   <Tooltip cursor= {{fill: "#9aa7bd"}}/>
 
-                  <Bar 
+                  <Bar
                     dataKey="runtime"
                     fill="rgba(6, 95, 70, 0.24)"
                     stroke="#35d49a"
@@ -298,40 +298,40 @@ export default function ComparisonReport({ reports = [] }) {
               <ResponsiveContainer width="100%" height={250}>
                 <BarChart data={executionData}>
 
-                  <XAxis 
+                  <XAxis
                     dataKey="name"
                     stroke="#9aa7bd"
                   />
 
-                  <YAxis 
+                  <YAxis
                     stroke="#9aa7bd"
                   />
 
                   <Tooltip cursor= {{fill: "#9aa7bd"}}/>
 
                   <Legend />
-                  <Bar 
+                  <Bar
                     dataKey="agents"
                     name="Agents"
                     fill="rgba(73, 214, 255, 0.32)"
                     stroke="#4db3d4"
                   />
 
-                  <Bar 
+                  <Bar
                     dataKey="sub_agents"
                     name="Sub-Agents"
                     fill="rgba(73, 255, 213, 0.32)"
                     stroke="rgba(73, 255, 213, 0.6)"
                   />
 
-                  <Bar 
+                  <Bar
                     dataKey="tools"
                     name="Tools"
                     fill="#313030"
                     stroke="#dfb357"
                   />
 
-                  <Bar 
+                  <Bar
                     dataKey="retrievers"
                     name="Retrievers"
                     fill="#322542"

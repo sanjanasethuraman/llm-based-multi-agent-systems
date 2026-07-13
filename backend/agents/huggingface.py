@@ -186,7 +186,7 @@ class HuggingFaceProvider(AgentProvider):
                     "server_id": server_id,
                     "tool_name": tool_name,
                 })
-                
+
                 try:
                     raw = await client.call_tool(tool_name, arguments)
                 except Exception as e:
@@ -219,7 +219,7 @@ class HuggingFaceProvider(AgentProvider):
                     sub_agent_stats[server_id]["totalDuration"] += sub_stats.get("totalDuration", 0)
                     sub_agent_stats[server_id]["inputTokens"] += sub_stats.get("inputTokens", 0)
                     sub_agent_stats[server_id]["outputTokens"] += sub_stats.get("outputTokens", 0)
-                    
+
                     self._merge_sub_agent_stats(sub_agent_stats, sub_stats.get("subAgentStats", {}))
 
 
@@ -260,7 +260,7 @@ class HuggingFaceProvider(AgentProvider):
                 "parameters": tool.inputSchema,
             }
         }
-    
+
     def _merge_sub_agent_stats(self, target: dict, sub_agent_stats_dict: dict):
         """
         Merge all sub-agent stats recursively

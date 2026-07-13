@@ -28,7 +28,9 @@ class AgentNodeExecutor(NodeExecutor):
         registry = context["mcp_registry"]
         available_tools = get_available_tools(node["id"], context["edges"], context["nodes"])
         log_node(node["id"], context, f"Agent has access to {len(available_tools)} tool(s).", status="info", node_type=node.get("type"))
-        provider_name = config.get("provider", "mock")
+        provider_name = config.get("provider", "ollama")
+        if provider_name in {"mock", "api"}:
+            provider_name = "ollama"
         provider = get_agent_provider(provider_name)
 
         if not provider:
@@ -36,7 +38,7 @@ class AgentNodeExecutor(NodeExecutor):
             return "", {"status": "error", "message": f"Agent provider '{provider_name}' not found."}
 
         result, stats = await provider.run(config, incoming, mcp_registry=registry, available_tools=available_tools)
-        
+
         context["stats"]["agentCalls"] += 1
         context["stats"]["toolCalls"] += stats.get("toolCalls", 0)
         context["stats"]["subAgentCalls"] += stats.get("subAgentCalls", 0)
@@ -45,7 +47,7 @@ class AgentNodeExecutor(NodeExecutor):
             "inputTokens": stats.get("inputTokens", 0),
             "outputTokens": stats.get("outputTokens", 0),
         }
-        
+
         #set sub-agent stats in context
         for server_id, sub_stats in stats.get("subAgentStats", {}).items():
             node_id = get_node_id_from_server_id(server_id, context["nodes"])

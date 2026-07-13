@@ -80,6 +80,27 @@
   --shadow: var(--shadow-card);
 }
 
+.app-crash-state {
+  min-height: 100vh;
+  display: grid;
+  place-content: center;
+  gap: 16px;
+  padding: 32px;
+  color: var(--text-main);
+  background: var(--bg-page);
+  text-align: center;
+}
+
+.app-crash-state button {
+  justify-self: center;
+  border: 1px solid var(--border-medium);
+  border-radius: var(--radius-sm);
+  padding: 10px 14px;
+  color: var(--text-main);
+  background: var(--bg-control);
+  cursor: pointer;
+}
+
 :root[data-theme="light"] {
   color-scheme: light;
   --bg-page: #f6f3ec;
@@ -899,7 +920,7 @@ pre {
   gap: var(--space-2);
 }
 
-.guided-journey div {
+.guided-journey button {
   display: grid;
   gap: var(--space-2);
   min-height: 104px;
@@ -907,9 +928,24 @@ pre {
   border: 1px solid var(--border-soft);
   border-radius: var(--radius-md);
   background: rgba(5, 10, 22, 0.38);
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+  transition:
+    border-color var(--transition-base),
+    background var(--transition-base),
+    transform var(--transition-base);
 }
 
-.guided-journey div.active {
+.guided-journey button:hover:not(:disabled),
+.guided-journey button:focus-visible {
+  border-color: rgba(110, 231, 255, 0.34);
+  background: rgba(15, 23, 42, 0.7);
+  outline: none;
+  transform: translateY(-1px);
+}
+
+.guided-journey button.active {
   border-color: rgba(110, 231, 255, 0.28);
   background: rgba(73, 214, 255, 0.09);
 }

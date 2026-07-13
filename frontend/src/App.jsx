@@ -12,7 +12,7 @@ import {
   Upload,
   XCircle,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Component, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { getJson, postJson, runWorkflowBatch, getVectorDatabaseProviders } from "./api.js";
 import {
@@ -44,10 +44,8 @@ import { useWorkflowTabs } from "./hooks/useWorkflowTabs.js";
 
 const nodeTypes = { workflow: WorkflowNode };
 const providerOptions = [
-  { value: "mock", label: "Mock" },
   { value: "ollama", label: "Ollama" },
   { value: "huggingface", label: "Hugging Face" },
-  { value: "api", label: "API" },
 ];
 const providerDefaults = {
   huggingface: {
@@ -71,12 +69,78 @@ const retrievalModeOptions = [
   { value: "graph", label: "Graph" },
   { value: "hybrid", label: "Hybrid" },
 ];
+const graphAnswerModeOptions = [
+  { value: "grounded", label: "Grounded" },
+  { value: "hybrid", label: "Hybrid" },
+];
 
 export default function App() {
   return (
-    <ReactFlowProvider>
-      <WorkflowApp />
-    </ReactFlowProvider>
+    <AppErrorBoundary>
+      <ReactFlowProvider>
+        <WorkflowApp />
+      </ReactFlowProvider>
+    </AppErrorBoundary>
+  );
+}
+
+class AppErrorBoundary extends Component {
+  constructor(props) {
+    super(props);
+    this.state = { error: null };
+  }
+
+  static getDerivedStateFromError(error) {
+    return { error };
+  }
+
+  render() {
+    if (this.state.error) {
+      return (
+        <div className="app-crash-state">
+          <h1>Workflow view crashed</h1>
+          <p>{toDisplayText(this.state.error.message || this.state.error)}</p>
+          <button type="button" onClick={() => window.location.reload()}>Reload app</button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+function toDisplayText(value) {
+  if (value == null) return "";
+  if (typeof value === "string") return value;
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
+}
+
+function normalizeNodeResultsForUi(results = {}) {
+  return Object.fromEntries(
+    Object.entries(results || {}).map(([id, result]) => [
+      id,
+      {
+        ...(result || {}),
+        message: toDisplayText(result?.message),
+        outputPreview: toDisplayText(result?.outputPreview),
+      },
+    ]),
+  );
+}
+
+function normalizeLogsForUi(logs = {}) {
+  return Object.fromEntries(
+    Object.entries(logs || {}).map(([nodeId, entries]) => [
+      nodeId,
+      (Array.isArray(entries) ? entries : []).map((entry) => ({
+        ...(entry || {}),
+        message: toDisplayText(entry?.message),
+      })),
+    ]),
   );
 }
 
@@ -120,16 +184,14 @@ function WorkflowApp() {
   const [huggingFaceStatus, setHuggingFaceStatus] = useState(null);
   const [graphStatus, setGraphStatus] = useState(null);
   const [primekgStatus, setPrimekgStatus] = useState(null);
-  const [primekgPreview, setPrimekgPreview] = useState(null);
-  const [primekgImportSummary, setPrimekgImportSummary] = useState(null);
   const [primekgGraph, setPrimekgGraph] = useState(null);
   const [primekgLoading, setPrimekgLoading] = useState("");
   const [primekgError, setPrimekgError] = useState("");
   const [primekgForm, setPrimekgForm] = useState({
     disease: "migraine",
     depth: 2,
-    maxNodes: 1000,
-    maxRelationships: 3000,
+    maxNodes: 120,
+    maxRelationships: 250,
   });
   const [ingestStatus, setIngestStatus] = useState("No document ingested yet.");
   const [comparisonReports, setComparisonReports] = useState([]);
@@ -145,6 +207,7 @@ function WorkflowApp() {
     files: [],
   });
   const [dynamicVectorBackendOptions, setDynamicVectorBackendOptions] = useState(vectorBackendOptions);
+  const runRequestRef = useRef(0);
 
   const validation = useMemo(() => validateWorkflow(workflow), [workflow]);
   const selectedNode = useMemo(
@@ -454,34 +517,47 @@ function WorkflowApp() {
       setStatusMessage("No example selected.");
       return;
     }
+    const requestId = ++runRequestRef.current;
+    setOutput("Run the workflow to see the final output.");
+    setLogs({});
+    setStats(null);
+    setNodeResults({});
+    setRetrievals([]);
     try {
       const result = await getJson(`/api/example?name=${encodeURIComponent(name)}`);
+      if (runRequestRef.current !== requestId) return;
       const nextWorkflow = normalizeWorkflow(result.workflow);
+      setSelectedExample(name);
       updateTabWorkflow(activeTabId, nextWorkflow);
-      setNodeResults({});
-      setRetrievals([]);
       setSelected({ kind: "node", id: nextWorkflow.nodes[0]?.id || "" });
       setStatusMessage(`Loaded example: ${result.label}.`);
     } catch (error) {
+      if (runRequestRef.current !== requestId) return;
       setStatusMessage(error.message);
     }
   }
 
   async function loadSavedWorkflow() {
+    const requestId = ++runRequestRef.current;
+    setOutput("Run the workflow to see the final output.");
+    setLogs({});
+    setStats(null);
+    setNodeResults({});
+    setRetrievals([]);
     try {
       setStatusMessage("Loading workflow...");
       const result = await getJson("/api/load-workflow");
+      if (runRequestRef.current !== requestId) return;
       if (!result.workflow) {
         setStatusMessage("No saved workflow found.");
         return;
       }
       const nextWorkflow = normalizeWorkflow(result.workflow);
       updateTabWorkflow(activeTabId, nextWorkflow);
-      setNodeResults({});
-      setRetrievals([]);
       setSelected({ kind: "node", id: nextWorkflow.nodes[0]?.id || "" });
       setStatusMessage(`Loaded workflow from ${result.path}.`);
     } catch (error) {
+      if (runRequestRef.current !== requestId) return;
       setStatusMessage(error.message);
     }
   }
@@ -497,6 +573,7 @@ function WorkflowApp() {
   }
 
   async function runWorkflow() {
+    const requestId = ++runRequestRef.current;
     const localValidation = validateWorkflow(workflow);
     if (localValidation.errors.length) {
       setOutput(localValidation.errors.join("\n"));
@@ -507,6 +584,7 @@ function WorkflowApp() {
     try {
       setStatusMessage("Validating workflow...");
       const serverValidation = await postJson("/api/validate", workflow);
+      if (runRequestRef.current !== requestId) return;
       if (serverValidation.errors?.length) {
         setOutput(serverValidation.errors.join("\n"));
         setStatusMessage("Backend validation failed.");
@@ -515,26 +593,28 @@ function WorkflowApp() {
 
       setStatusMessage("Running workflow...");
       setOutput("Running...");
-      setLogs([]);
+      setLogs({});
       setStats(null);
       setRetrievals([]);
-      setNodeResults(
+      setNodeResults(normalizeNodeResultsForUi(
         Object.fromEntries(
           workflow.nodes.map((node) => [
             node.id,
             { status: "running", message: "Queued for execution.", type: node.type },
           ]),
         ),
-      );
+      ));
 
       const result = await postJson("/api/run", workflow);
-      setOutput(result.output || "(No output)");
-      setLogs(result.logs || []);
+      if (runRequestRef.current !== requestId) return;
+      setOutput(toDisplayText(result.output) || "(No output)");
+      setLogs(normalizeLogsForUi(result.logs || {}));
       setStats(result.stats || null);
       setRetrievals(result.retrievals || []);
-      setNodeResults(result.nodeResults || {});
+      setNodeResults(normalizeNodeResultsForUi(result.nodeResults || {}));
       setStatusMessage("Workflow run completed.");
     } catch (error) {
+      if (runRequestRef.current !== requestId) return;
       setOutput(error.payload?.validation?.errors?.join("\n") || error.message);
       setStatusMessage(error.message);
       setNodeResults({});
@@ -608,103 +688,9 @@ function WorkflowApp() {
       setPrimekgLoading("status");
       const result = await getJson("/api/primekg/status");
       setPrimekgStatus(result);
-      if (result.lastImportSummary) {
-        setPrimekgImportSummary(result.lastImportSummary);
-      }
     } catch (error) {
       setPrimekgError(error.message);
       setPrimekgStatus({ configured: false, fileExists: false, neo4jConnected: false, message: error.message });
-    } finally {
-      setPrimekgLoading("");
-    }
-  }
-
-  async function previewPrimekgSubgraph() {
-    try {
-      setPrimekgError("");
-      setPrimekgLoading("preview");
-      const result = await postJson("/api/primekg/filter-preview", {
-        csvPath: "data/primekg/kg.csv",
-        disease: primekgForm.disease,
-        depth: Number(primekgForm.depth),
-        maxNodes: Number(primekgForm.maxNodes),
-        maxRelationships: Number(primekgForm.maxRelationships),
-        allowedNodeTypes: [],
-        allowedRelationTypes: [],
-      });
-      setPrimekgPreview(result);
-      setStatusMessage(result.ok ? `PrimeKG preview found ${result.nodeCount} nodes and ${result.relationshipCount} relationships.` : result.error || "PrimeKG preview completed.");
-      await refreshPrimekgStatus();
-    } catch (error) {
-      setPrimekgError(error.message);
-      setStatusMessage(error.message);
-    } finally {
-      setPrimekgLoading("");
-    }
-  }
-
-  async function importPrimekgSubgraph() {
-    if (!primekgPreview?.outputPath) {
-      setPrimekgError("Preview a PrimeKG subgraph before importing.");
-      return;
-    }
-    try {
-      setPrimekgError("");
-      setPrimekgLoading("import");
-      const result = await postJson("/api/primekg/import-filtered", {
-        filteredPath: primekgPreview.outputPath,
-        dryRun: false,
-        clearExistingPrimeKG: false,
-      });
-      setPrimekgImportSummary(result);
-      setPrimekgGraph(null);
-      setStatusMessage(
-        result.status === "imported"
-          ? `Imported ${result.nodesImported} PrimeKG nodes and ${result.relationshipsImported} relationships.`
-          : `PrimeKG import status: ${result.status}`,
-      );
-      await refreshPrimekgStatus();
-      await refreshGraphStatus();
-    } catch (error) {
-      setPrimekgError(error.message);
-      setStatusMessage(error.message);
-    } finally {
-      setPrimekgLoading("");
-    }
-  }
-
-  async function filterAndImportPrimekgSubgraph() {
-    try {
-      setPrimekgError("");
-      setPrimekgLoading("filterImport");
-      const result = await postJson("/api/primekg/filter-and-import", {
-        csvPath: "data/primekg/kg.csv",
-        disease: primekgForm.disease,
-        depth: Number(primekgForm.depth),
-        maxNodes: Number(primekgForm.maxNodes),
-        maxRelationships: Number(primekgForm.maxRelationships),
-        allowedNodeTypes: [],
-        allowedRelationTypes: [],
-        dryRun: false,
-        clearExistingPrimeKG: false,
-      });
-      if (result.preview) {
-        setPrimekgPreview(result.preview);
-      }
-      if (result.importSummary) {
-        setPrimekgImportSummary(result.importSummary);
-      }
-      setPrimekgGraph(null);
-      setStatusMessage(
-        result.status === "imported"
-          ? `Filtered and imported ${result.importSummary?.nodesImported || 0} PrimeKG nodes.`
-          : `PrimeKG filter/import status: ${result.status}`,
-      );
-      await refreshPrimekgStatus();
-      await refreshGraphStatus();
-    } catch (error) {
-      setPrimekgError(error.message);
-      setStatusMessage(error.message);
     } finally {
       setPrimekgLoading("");
     }
@@ -944,15 +930,79 @@ function WorkflowApp() {
 
   async function checkSystemStatus() {
     setStatusMessage("Checking system status...");
-    await Promise.allSettled([
-      refreshExamples(),
-      refreshCollections(),
-      refreshGraphStatus(),
-      refreshPrimekgStatus(),
-      refreshMcpTools(),
-      loadVectorDatabaseProviders(),
+    const [
+      examplesResult,
+      collectionsResult,
+      graphResult,
+      primekgResult,
+      toolsResult,
+      serversResult,
+      providersResult,
+    ] = await Promise.allSettled([
+      getJson("/api/examples"),
+      getJson("/api/documents/collections"),
+      getJson("/api/graph-rag/status"),
+      getJson("/api/primekg/status"),
+      getJson("/api/mcp/tools"),
+      getJson("/api/mcp/servers"),
+      getVectorDatabaseProviders(),
     ]);
-    setStatusMessage("System status refreshed.");
+
+    if (examplesResult.status === "fulfilled") {
+      const nextExamples = examplesResult.value.examples || [];
+      setExamples(nextExamples);
+      setSelectedExample((current) => current || nextExamples[0]?.name || "");
+    }
+    if (collectionsResult.status === "fulfilled") {
+      setCollections(collectionsResult.value.collections || []);
+      setRecentDocuments(collectionsResult.value.recentDocuments || []);
+    }
+    if (graphResult.status === "fulfilled") {
+      setGraphStatus(graphResult.value);
+    } else {
+      setGraphStatus({ connected: false, message: graphResult.reason?.message || "Graph status unavailable." });
+    }
+    if (primekgResult.status === "fulfilled") {
+      setPrimekgStatus(primekgResult.value);
+      setPrimekgError("");
+    } else {
+      setPrimekgStatus({ configured: false, fileExists: false, neo4jConnected: false, message: primekgResult.reason?.message || "PrimeKG status unavailable." });
+      setPrimekgError(primekgResult.reason?.message || "PrimeKG status unavailable.");
+    }
+    if (toolsResult.status === "fulfilled" || serversResult.status === "fulfilled") {
+      setMcpTools(toolsResult.status === "fulfilled" ? toolsResult.value.tools || [] : []);
+      setMcpServers(serversResult.status === "fulfilled" ? serversResult.value.servers || [] : []);
+    }
+    if (providersResult.status === "fulfilled" && providersResult.value.list?.length) {
+      setDynamicVectorBackendOptions(
+        providersResult.value.list.map((provider) => ({
+          value: provider,
+          label: providersResult.value.providers?.[provider]?.name || provider.charAt(0).toUpperCase() + provider.slice(1),
+        })),
+      );
+    }
+
+    const examplesCount = examplesResult.status === "fulfilled" ? examplesResult.value.examples?.length || 0 : 0;
+    const collectionCount = collectionsResult.status === "fulfilled" ? collectionsResult.value.collections?.length || 0 : 0;
+    const neo4jConnected = Boolean(
+      primekgResult.status === "fulfilled"
+        ? primekgResult.value.neo4jConnected || primekgResult.value.neo4j?.connected
+        : graphResult.status === "fulfilled" && graphResult.value.connected,
+    );
+    const csvFound = primekgResult.status === "fulfilled" && primekgResult.value.fileExists;
+    const servers = serversResult.status === "fulfilled" ? serversResult.value.servers || [] : [];
+    const connectedServers = servers.filter((server) => server.connected).length;
+    const backendOnline = [examplesResult, collectionsResult, graphResult, primekgResult, toolsResult, serversResult, providersResult].some(
+      (result) => result.status === "fulfilled",
+    );
+    setStatusMessage(
+      `Status: backend ${backendOnline ? "online" : "offline"} | examples ${examplesCount} | vector ${collectionCount} collections | Neo4j ${neo4jConnected ? "connected" : "offline"} | PrimeKG CSV ${csvFound ? "found" : "missing"} | MCP ${connectedServers}/${servers.length} connected.`,
+    );
+  }
+
+  function selectAndLoadExample(name) {
+    setSelectedExample(name);
+    loadExample(name);
   }
 
   function loadDemoWorkflow() {
@@ -1038,7 +1088,7 @@ function WorkflowApp() {
         onToggleTheme={toggleTheme}
         onRunWorkflow={runWorkflow}
         onSaveWorkflow={saveWorkflow}
-        onSelectExample={setSelectedExample}
+        onSelectExample={selectAndLoadExample}
       />
       <div className="workflow-tabs-section">
         <WorkflowTabs
@@ -1095,6 +1145,7 @@ function WorkflowApp() {
             mcpTools={mcpTools}
             mcpServers={mcpServers}
             ollamaStatus={ollamaStatus}
+            dynamicVectorBackendOptions={dynamicVectorBackendOptions}
             onNodeChange={updateNode}
           />
         }
@@ -1163,17 +1214,12 @@ function WorkflowApp() {
       <PrimeKGPanel
         form={primekgForm}
         status={primekgStatus}
-        preview={primekgPreview}
-        importSummary={primekgImportSummary}
         graph={primekgGraph}
         retrievals={retrievals}
         loading={primekgLoading}
         error={primekgError}
         onFormChange={setPrimekgForm}
         onRefreshStatus={refreshPrimekgStatus}
-        onPreview={previewPrimekgSubgraph}
-        onImport={importPrimekgSubgraph}
-        onFilterAndImport={filterAndImportPrimekgSubgraph}
         onLoadGraph={loadPrimekgGraph}
         presentationMode={presentationMode}
       />
@@ -1188,7 +1234,8 @@ function WorkflowApp() {
 }
 
 function WorkflowNode({ data, selected }) {
-  const { node, result, retrievalInfo } = data;
+  const { node: rawNode, result, retrievalInfo } = data;
+  const node = { ...(rawNode || {}), config: rawNode?.config || {} };
   const status = result?.status || "idle";
   const chunkCount = retrievalInfo?.matches?.length || 0;
   const details = retrievalInfo && chunkCount > 0;
@@ -1235,7 +1282,16 @@ function WorkflowNode({ data, selected }) {
   );
 }
 
-function ConfigPanel({ node, validation, huggingFaceStatus, mcpTools, mcpServers, ollamaStatus, onNodeChange }) {
+function ConfigPanel({
+  node,
+  validation,
+  huggingFaceStatus,
+  mcpTools,
+  mcpServers,
+  ollamaStatus,
+  dynamicVectorBackendOptions = vectorBackendOptions,
+  onNodeChange,
+}) {
   if (!node) {
     return (
       <aside className="config">
@@ -1256,6 +1312,7 @@ function ConfigPanel({ node, validation, huggingFaceStatus, mcpTools, mcpServers
 
   const updateConfig = (patch) => onNodeChange(node.id, { config: patch });
   const updateLabel = (label) => onNodeChange(node.id, { label });
+  const config = node.config || {};
   const typeLabel = NODE_TYPES[node.type] || node.type;
 
   return (
@@ -1294,7 +1351,7 @@ function ConfigPanel({ node, validation, huggingFaceStatus, mcpTools, mcpServers
               Input Text
               <textarea
                 rows={6}
-                value={node.config.text || ""}
+                value={config.text || ""}
                 onChange={(event) => updateConfig({ text: event.target.value })}
               />
             </label>
@@ -1306,7 +1363,7 @@ function ConfigPanel({ node, validation, huggingFaceStatus, mcpTools, mcpServers
             <label>
               Agent Name
               <input
-                value={node.config.name || ""}
+                value={config.name || ""}
                 onChange={(event) => updateConfig({ name: event.target.value })}
               />
             </label>
@@ -1315,7 +1372,7 @@ function ConfigPanel({ node, validation, huggingFaceStatus, mcpTools, mcpServers
               <div className="segmented">
                 {providerOptions.map((provider) => (
                   <button
-                    className={node.config.provider === provider.value ? "active" : ""}
+                    className={config.provider === provider.value ? "active" : ""}
                     key={provider.value}
                     type="button"
                     onClick={() => updateConfig({ provider: provider.value, ...(providerDefaults[provider.value] || {}) })}
@@ -1326,59 +1383,43 @@ function ConfigPanel({ node, validation, huggingFaceStatus, mcpTools, mcpServers
               </div>
             </div>
             <ProviderNote
-              provider={node.config.provider}
+              provider={config.provider}
               huggingFaceStatus={huggingFaceStatus}
               ollamaStatus={ollamaStatus}
             />
             <label>
-              {node.config.provider === "huggingface" ? "Hugging Face Model ID" : "Model"}
-              {node.config.provider === "huggingface" || node.config.provider === "mock" ?  (
-                <input
-                value={node.config.model || ""}
-                placeholder={node.config.provider === "huggingface" ? "Qwen/Qwen3-8B" : "llama3.2:1b"}
+              {config.provider === "huggingface" ? "Hugging Face Model ID" : "Model"}
+              <input
+                value={config.model || ""}
+                placeholder={config.provider === "huggingface" ? "mistralai/Mistral-7B-Instruct-v0.3" : "llama3.2:1b"}
                 onChange={(event) => updateConfig({ model: event.target.value })}
                 />
-              ) : (
-                <select
-                value={node.config.model || ""}
-                onChange={(event) => updateConfig({ model: event.target.value })}
-                >
-                  <option value="">
-                    Select model
-                  </option>
-                  {ollamaStatus.models?.map((model) => (
-                    <option key={model} value={model}>
-                      {model}
-                    </option>
-                  ))}
-                </select>
-              )}
             </label>
-            {node.config.provider === "huggingface" && (
+            {config.provider === "huggingface" && (
               <label>
                 Hugging Face Token
                 <input
                   autoComplete="off"
                   type="password"
-                  value={node.config.huggingFaceToken || ""}
+                  value={config.huggingFaceToken || ""}
                   placeholder="Uses HF_TOKEN on the backend if left blank"
                   onChange={(event) => updateConfig({ huggingFaceToken: event.target.value })}
                 />
               </label>
             )}
             <label>
-              {node.config.provider === "huggingface" ? "Inference API URL" : "Local Provider URL"}
+              {config.provider === "huggingface" ? "Inference API URL" : "Local Provider URL"}
               <input
-                value={node.config.baseUrl || ""}
+                value={config.baseUrl || ""}
                 placeholder={
-                  node.config.provider === "huggingface"
+                  config.provider === "huggingface"
                     ? "https://router.huggingface.co/v1"
                     : "http://127.0.0.1:11434"
                 }
                 onChange={(event) => updateConfig({ baseUrl: event.target.value })}
               />
             </label>
-            {node.config.provider === "huggingface" && (
+            {config.provider === "huggingface" && (
               <label>
                 Max New Tokens
                 <input
@@ -1386,7 +1427,7 @@ function ConfigPanel({ node, validation, huggingFaceStatus, mcpTools, mcpServers
                   min="1"
                   step="1"
                   type="number"
-                  value={node.config.maxNewTokens ?? 1024}
+                  value={config.maxNewTokens ?? 512}
                   onChange={(event) => updateConfig({ maxNewTokens: Number(event.target.value) })}
                 />
               </label>
@@ -1398,13 +1439,13 @@ function ConfigPanel({ node, validation, huggingFaceStatus, mcpTools, mcpServers
                 min="0"
                 step="0.1"
                 type="number"
-                value={node.config.temperature ?? 0.2}
+                value={config.temperature ?? 0.2}
                 onChange={(event) => updateConfig({ temperature: Number(event.target.value) })}
               />
             </label>
             <label>
               Think
-              <select value={node.config.think ?? false} onChange={(event) => updateConfig({ think: event.target.value })}>
+              <select value={String(config.think ?? false)} onChange={(event) => updateConfig({ think: event.target.value === "true" })}>
                 <option value={true}>true</option>
                 <option value={false}>false</option>
               </select>
@@ -1413,7 +1454,7 @@ function ConfigPanel({ node, validation, huggingFaceStatus, mcpTools, mcpServers
               System Prompt
               <textarea
                 rows={6}
-                value={node.config.systemPrompt || ""}
+                value={config.systemPrompt || ""}
                 onChange={(event) => updateConfig({ systemPrompt: event.target.value })}
               />
             </label>
@@ -1425,7 +1466,7 @@ function ConfigPanel({ node, validation, huggingFaceStatus, mcpTools, mcpServers
             <label>
               Collection
               <input
-                value={node.config.collection || ""}
+                value={config.collection || ""}
                 placeholder="course_docs"
                 onChange={(event) => updateConfig({ collection: event.target.value })}
               />
@@ -1435,7 +1476,7 @@ function ConfigPanel({ node, validation, huggingFaceStatus, mcpTools, mcpServers
                 <label>
                   Retrieval Mode
                   <select
-                    value={node.config.retrievalMode || "vector"}
+                    value={config.retrievalMode || "vector"}
                     onChange={(event) => updateConfig({ retrievalMode: event.target.value })}
                   >
                     {retrievalModeOptions.map((mode) => (
@@ -1445,11 +1486,27 @@ function ConfigPanel({ node, validation, huggingFaceStatus, mcpTools, mcpServers
                     ))}
                   </select>
                 </label>
-                {["graph", "hybrid"].includes(node.config.retrievalMode || "vector") && (
+                {["graph", "hybrid"].includes(config.retrievalMode || "vector") && (
                   <>
                     <div className="provider-note neutral compact">
                       Disease selection is optional. Graph RAG will auto-detect entities from the question when possible; a selected disease is only used as a hint.
                     </div>
+                    <label>
+                      Answer Mode
+                      <select
+                        value={config.graphAnswerMode || "grounded"}
+                        onChange={(event) => updateConfig({ graphAnswerMode: event.target.value })}
+                      >
+                        {graphAnswerModeOptions.map((mode) => (
+                          <option key={mode.value} value={mode.value}>
+                            {mode.label}
+                          </option>
+                        ))}
+                      </select>
+                      <small>
+                        Grounded uses only PrimeKG evidence. Hybrid can add clearly separated model knowledge and must say whether fallback was used.
+                      </small>
+                    </label>
                     <label>
                       Graph Hops
                       <input
@@ -1457,7 +1514,7 @@ function ConfigPanel({ node, validation, huggingFaceStatus, mcpTools, mcpServers
                         min="1"
                         step="1"
                         type="number"
-                        value={node.config.graphHops || 1}
+                        value={config.graphHops || 1}
                         onChange={(event) => updateConfig({ graphHops: Number(event.target.value) })}
                       />
                     </label>
@@ -1468,7 +1525,7 @@ function ConfigPanel({ node, validation, huggingFaceStatus, mcpTools, mcpServers
                         min="1"
                         step="1"
                         type="number"
-                        value={node.config.graphTopK || 5}
+                        value={config.graphTopK || 5}
                         onChange={(event) => updateConfig({ graphTopK: Number(event.target.value) })}
                       />
                     </label>
@@ -1479,7 +1536,7 @@ function ConfigPanel({ node, validation, huggingFaceStatus, mcpTools, mcpServers
             <label>
               Vector Backend
               <select
-                value={node.config.vectorBackend || "auto"}
+                value={config.vectorBackend || "auto"}
                 onChange={(event) => updateConfig({ vectorBackend: event.target.value })}
               >
                 {dynamicVectorBackendOptions.map((backend) => (
@@ -1492,7 +1549,7 @@ function ConfigPanel({ node, validation, huggingFaceStatus, mcpTools, mcpServers
             <label>
               Embedding Model
               <input
-                value={node.config.embeddingModel || ""}
+                value={config.embeddingModel || ""}
                 placeholder="nomic-embed-text"
                 onChange={(event) => updateConfig({ embeddingModel: event.target.value })}
               />
@@ -1500,7 +1557,7 @@ function ConfigPanel({ node, validation, huggingFaceStatus, mcpTools, mcpServers
             <label>
               Ollama URL
               <input
-                value={node.config.baseUrl || ""}
+                value={config.baseUrl || ""}
                 placeholder="http://127.0.0.1:11434"
                 onChange={(event) => updateConfig({ baseUrl: event.target.value })}
               />
@@ -1513,7 +1570,7 @@ function ConfigPanel({ node, validation, huggingFaceStatus, mcpTools, mcpServers
                   min="1"
                   step="1"
                   type="number"
-                  value={node.config.topK || 3}
+                  value={config.topK || 3}
                   onChange={(event) => updateConfig({ topK: Number(event.target.value) })}
                 />
               </label>
@@ -1526,7 +1583,7 @@ function ConfigPanel({ node, validation, huggingFaceStatus, mcpTools, mcpServers
             <label>
               Tool
               <select
-                value={node.config.toolName ? `${node.config.serverId}::${node.config.toolName}` : ""}
+                value={config.toolName ? `${config.serverId}::${config.toolName}` : ""}
                 onChange={(event) => {
                   const [serverId, toolName] = event.target.value.split("::");
                   const tool = mcpTools.find(t => t.name === toolName && t.serverId === serverId);
@@ -1557,12 +1614,12 @@ function ConfigPanel({ node, validation, huggingFaceStatus, mcpTools, mcpServers
                 })}
               </select>
             </label>
-            {node.config.description && (
-              <div className="provider-note neutral">{node.config.description}</div>
+            {config.description && (
+              <div className="provider-note neutral">{config.description}</div>
             )}
-            {node.config.toolName && (
+            {config.toolName && (
               <div className="provider-note success">
-                Server: <strong>{node.config.serverId}</strong> · Tool: <strong>{node.config.toolName}</strong>
+                Server: <strong>{config.serverId}</strong> · Tool: <strong>{config.toolName}</strong>
               </div>
             )}
           </>
@@ -1573,7 +1630,7 @@ function ConfigPanel({ node, validation, huggingFaceStatus, mcpTools, mcpServers
             <label>
               Sub Agent Name
               <input
-                value={node.config.name || ""}
+                value={config.name || ""}
                 onChange={(event) => updateConfig({ name: event.target.value })}
               />
             </label>
@@ -1582,7 +1639,7 @@ function ConfigPanel({ node, validation, huggingFaceStatus, mcpTools, mcpServers
               <div className="segmented">
                 {providerOptions.map((provider) => (
                   <button
-                    className={node.config.provider === provider.value ? "active" : ""}
+                    className={config.provider === provider.value ? "active" : ""}
                     key={provider.value}
                     type="button"
                     onClick={() => updateConfig({ provider: provider.value, ...(providerDefaults[provider.value] || {}) })}
@@ -1593,59 +1650,43 @@ function ConfigPanel({ node, validation, huggingFaceStatus, mcpTools, mcpServers
               </div>
             </div>
             <ProviderNote
-              provider={node.config.provider}
+              provider={config.provider}
               huggingFaceStatus={huggingFaceStatus}
               ollamaStatus={ollamaStatus}
             />
             <label>
-              {node.config.provider === "huggingface" ? "Hugging Face Model ID" : "Model"}
-              {node.config.provider === "huggingface" || node.config.provider === "mock" ?  (
-                <input
-                value={node.config.model || ""}
-                placeholder={node.config.provider === "huggingface" ? "Qwen/Qwen3-8B" : "llama3.2:1b"}
+              {config.provider === "huggingface" ? "Hugging Face Model ID" : "Model"}
+              <input
+                value={config.model || ""}
+                placeholder={config.provider === "huggingface" ? "mistralai/Mistral-7B-Instruct-v0.3" : "llama3.2:1b"}
                 onChange={(event) => updateConfig({ model: event.target.value })}
                 />
-              ) : (
-                <select
-                value={node.config.model || ""}
-                onChange={(event) => updateConfig({ model: event.target.value })}
-                >
-                  <option value="">
-                    Select model
-                  </option>
-                  {ollamaStatus.models?.map((model) => (
-                    <option key={model} value={model}>
-                      {model}
-                    </option>
-                  ))}
-                </select>
-              )}
             </label>
-            {node.config.provider === "huggingface" && (
+            {config.provider === "huggingface" && (
               <label>
                 Hugging Face Token
                 <input
                   autoComplete="off"
                   type="password"
-                  value={node.config.huggingFaceToken || ""}
+                  value={config.huggingFaceToken || ""}
                   placeholder="Uses HF_TOKEN on the backend if left blank"
                   onChange={(event) => updateConfig({ huggingFaceToken: event.target.value })}
                 />
               </label>
             )}
             <label>
-              {node.config.provider === "huggingface" ? "Inference API URL" : "Local Provider URL"}
+              {config.provider === "huggingface" ? "Inference API URL" : "Local Provider URL"}
               <input
-                value={node.config.baseUrl || ""}
+                value={config.baseUrl || ""}
                 placeholder={
-                  node.config.provider === "huggingface"
+                  config.provider === "huggingface"
                     ? "https://router.huggingface.co/v1"
                     : "http://127.0.0.1:11434"
                 }
                 onChange={(event) => updateConfig({ baseUrl: event.target.value })}
               />
             </label>
-            {node.config.provider === "huggingface" && (
+            {config.provider === "huggingface" && (
               <label>
                 Max New Tokens
                 <input
@@ -1653,7 +1694,7 @@ function ConfigPanel({ node, validation, huggingFaceStatus, mcpTools, mcpServers
                   min="1"
                   step="1"
                   type="number"
-                  value={node.config.maxNewTokens ?? 1024}
+                  value={config.maxNewTokens ?? 512}
                   onChange={(event) => updateConfig({ maxNewTokens: Number(event.target.value) })}
                 />
               </label>
@@ -1665,13 +1706,13 @@ function ConfigPanel({ node, validation, huggingFaceStatus, mcpTools, mcpServers
                 min="0"
                 step="0.1"
                 type="number"
-                value={node.config.temperature ?? 0.2}
+                value={config.temperature ?? 0.2}
                 onChange={(event) => updateConfig({ temperature: Number(event.target.value) })}
               />
             </label>
             <label>
               Think
-              <select value={node.config.think ?? false} onChange={(event) => updateConfig({ think: event.target.value })}>
+              <select value={String(config.think ?? false)} onChange={(event) => updateConfig({ think: event.target.value === "true" })}>
                 <option value={true}>true</option>
                 <option value={false}>false</option>
               </select>
@@ -1680,7 +1721,7 @@ function ConfigPanel({ node, validation, huggingFaceStatus, mcpTools, mcpServers
               System Prompt
               <textarea
                 rows={6}
-                value={node.config.systemPrompt || ""}
+                value={config.systemPrompt || ""}
                 onChange={(event) => updateConfig({ systemPrompt: event.target.value })}
               />
             </label>
@@ -1698,12 +1739,6 @@ function ConfigPanel({ node, validation, huggingFaceStatus, mcpTools, mcpServers
 }
 
 function ProviderNote({ provider, huggingFaceStatus, ollamaStatus }) {
-  if (provider === "mock") {
-    return <div className="provider-note neutral">Mock mode is deterministic and works offline.</div>;
-  }
-  if (provider === "api") {
-    return <div className="provider-note warning">The API provider is a placeholder in this prototype.</div>;
-  }
   if (provider === "huggingface") {
     if (!huggingFaceStatus) {
       return <div className="provider-note neutral">Checking Hugging Face link...</div>;
@@ -1736,7 +1771,7 @@ function ProviderNote({ provider, huggingFaceStatus, ollamaStatus }) {
   }
   return (
     <div className="provider-note warning">
-      Ollama is not reachable at {ollamaStatus.baseUrl}. Use mock mode or start Ollama.
+      Ollama is not reachable at {ollamaStatus.baseUrl}. Start Ollama and pull the selected model.
     </div>
   );
 }
@@ -1947,7 +1982,7 @@ function getNodeGlyph(type) {
 function getNodePrimaryDetail(node) {
   const config = node.config || {};
   if (node.type === "agent") {
-    return [config.provider || "mock", config.model || config.name || "model pending"].filter(Boolean);
+    return [config.provider || "ollama", config.model || config.name || "model pending"].filter(Boolean);
   }
   if (node.type === "retriever") {
     return [config.retrievalMode || "vector", config.collection || "collection"].filter(Boolean);

@@ -1,6 +1,6 @@
 {
   "label": "MCP Tool Demo",
-  "description": "Runs a deterministic mock MCP lookup tool before the final writer agent.",
+  "description": "Uses a live local LLM agent to write a demo note.",
   "workflow": {
     "nodes": [
       {
@@ -13,31 +13,18 @@
         }
       },
       {
-        "id": "mcp-1",
-        "type": "mcp_tool",
-        "label": "MCP Lookup",
-        "position": { "x": 300, "y": 205 },
-        "config": {
-          "name": "MCP Lookup",
-          "server": "demo",
-          "toolId": "demo.lookup",
-          "arguments": "{\n  \"topic\": \"visual multi-agent systems\"\n}",
-          "includeInput": true
-        }
-      },
-      {
         "id": "agent-1",
         "type": "agent",
         "label": "Demo Writer",
         "position": { "x": 540, "y": 205 },
         "config": {
           "name": "Demo Writer",
-          "provider": "mock",
+          "provider": "ollama",
           "model": "llama3.2:1b",
           "baseUrl": "http://127.0.0.1:11434",
           "temperature": 0.2,
           "think": false,
-          "systemPrompt": "Write a concise demo summary using the MCP tool result."
+          "systemPrompt": "Write a concise demo summary from the brief."
         }
       },
       {
@@ -49,8 +36,7 @@
       }
     ],
     "edges": [
-      { "source": "input-1", "target": "mcp-1" },
-      { "source": "mcp-1", "target": "agent-1" },
+      { "source": "input-1", "target": "agent-1" },
       { "source": "agent-1", "target": "output-1" }
     ]
   }

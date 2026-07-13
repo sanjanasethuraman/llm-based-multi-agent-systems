@@ -1,6 +1,6 @@
 {
   "label": "Basic Agent Chain",
-  "description": "Input, planner agent, writer agent, word-count tool, and final output.",
+  "description": "Input, planner agent, writer agent, and final output.",
   "workflow": {
     "nodes": [
       {
@@ -19,7 +19,7 @@
         "position": { "x": 290, "y": 150 },
         "config": {
           "name": "Planner Agent",
-          "provider": "mock",
+          "provider": "ollama",
           "model": "llama3.2:1b",
           "baseUrl": "http://127.0.0.1:11434",
           "temperature": 0.2,
@@ -34,22 +34,12 @@
         "position": { "x": 520, "y": 150 },
         "config": {
           "name": "Writer Agent",
-          "provider": "mock",
+          "provider": "ollama",
           "model": "llama3.2:1b",
           "baseUrl": "http://127.0.0.1:11434",
           "temperature": 0.4,
           "think": false,
           "systemPrompt": "Write a concise final response based on the plan."
-        }
-      },
-      {
-        "id": "tool-1",
-        "type": "tool",
-        "label": "Word Count",
-        "position": { "x": 520, "y": 285 },
-        "config": {
-          "name": "Word Count",
-          "toolName": "word_count"
         }
       },
       {
@@ -63,9 +53,7 @@
     "edges": [
       { "source": "input-1", "target": "agent-1" },
       { "source": "agent-1", "target": "agent-2" },
-      { "source": "agent-2", "target": "tool-1" },
-      { "source": "agent-2", "target": "output-1" },
-      { "source": "tool-1", "target": "output-1" }
+      { "source": "agent-2", "target": "output-1" }
     ]
   }
 }
