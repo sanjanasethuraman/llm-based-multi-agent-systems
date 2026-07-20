@@ -1,17 +1,16 @@
 # Visual Tool for LLM-based Multi-Agent Systems
 
-React + Python prototype for visually composing, running, and inspecting LLM-based multi-agent workflows.
+React + Python prototype for visually composing, running, comparing, and inspecting LLM-based multi-agent workflows.
 
 ## Features
 
-- Drag nodes around on a React Flow canvas.
-- Connect nodes visually with source/target handles.
-- Delete selected nodes and edges.
-- Validate workflows before execution.
-- Show per-node execution status after a run.
-- Ingest files into a RAG collection.
-- List document/vector collections.
-- Select a vector backend per ingestion/retriever path (auto, Chroma, local JSON, FAISS scaffold).
+- Compose workflows from input, agent, sub-agent, retriever, vector database, tool, and output nodes on a React Flow canvas.
+- Validate, save, run, and export workflows as executable Python, with per-node status, logs, token usage, and timing metrics.
+- Manage multiple workflows in tabs, run them independently, sequentially, or in parallel, and compare their execution reports.
+- Run agents through live Ollama or Hugging Face providers, selecting an installed Ollama model or entering a Hugging Face model ID.
+- Connect MCP tool servers over HTTP or stdio; an internal server provides word-count and uppercase tools out of the box.
+- Ingest text, PDF, DOCX, PPTX, and other supported files into RAG collections.
+- List document/vector collections and select a vector backend per ingestion/retriever path (auto, Chroma, local JSON, or the FAISS scaffold).
 - Show retrieved chunks from retriever nodes.
 - Display retrieval metadata on each chunk card, including stage, collection, chunk index, score, and vector backend.
 - Show retrieval chunk usage on the workflow graph with retriever node badges and edge labels.
@@ -19,51 +18,65 @@ React + Python prototype for visually composing, running, and inspecting LLM-bas
 - Show retriever execution results even when zero matches are returned.
 - Run Neo4j-backed Graph RAG retrieval modes: vector, graph, and hybrid.
 - Seed a curated biomedical knowledge graph demo with diseases, drugs, genes, pathways, trials, publications, and evidence chunks.
-- Run agents through live Ollama or Hugging Face providers.
-- Surface Ollama availability from the configured local provider URL.
+- Explore imported PrimeKG data in bounded 2D/3D graph views and inspect evidence paths returned by Graph RAG.
 - Load example workflows for demos and evaluation.
 
 ## Project Layout
 
-- `backend/` contains the standard-library Python server, workflow runner, SQLite helpers, and RAG helpers.
-    - `agents/` contains live agent providers (Ollama, Hugging Face, ...)
-    - `nodes/` contains node executors (for all node types)
-    - `tools/` tool implementations
-    - `vector_db/` optional vector DB connectors / adapters
+- `backend/` contains the standard-library HTTP server, workflow runner, SQLite persistence, MCP integration, and RAG/Graph RAG helpers.
+    - `agents/` contains the Ollama and Hugging Face agent providers.
+    - `nodes/` contains executors for the supported workflow node types.
+    - `tools/` contains the built-in MCP tool implementations and server.
+    - `vector_db/` contains optional vector database connectors/adapters.
 - `frontend/` contains the Vite/React app.
-- `examples/` contains presentation/demo workflows.
+- `examples/` contains ready-to-load workflows and biomedical demo data.
+- `docs/` contains the detailed PrimeKG setup, demo, and verification guides.
+- `tests/` contains backend workflow, RAG, PrimeKG, and integration tests.
 - `docker-compose.neo4j.yml` starts the optional Neo4j backend for Graph RAG.
 - `scripts/demo.sh` installs missing frontend dependencies, builds React, and starts the backend server.
-- `data/` is runtime-only local state and is ignored by Git.
+- `data/` contains ignored runtime state plus tracked PrimeKG setup metadata.
 - `generated/` is runtime-only Python export output and is ignored by Git.
 
-## Setup & Run The App
-### 1. Install Python dependencies
+## Setup and Run
+
+Prerequisites:
+
+- Python 3.10 or newer.
+- Node.js 20.19+ or 22.12+ (required by the installed Vite version).
+- Ollama and Neo4j are optional; the core app starts without either service.
+
+### 1. Install the dependencies
+
 Create and activate a Python virtual environment:
+
 ```bash
-python -m venv .venv
+python3 -m venv .venv
 source .venv/bin/activate
 ```
+
 Install backend dependencies:
+
 ```bash
 python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
 ```
 
-### 2. Install Node dependencies, build the React frontend, and start the Python backend:
+Install frontend dependencies:
 
 ```bash
 npm install
-npm run build
-python3 backend/server.py
 ```
-(If you get ModuleNotFoundErrors try "python3 -m backend.server" instead of "python3 backend/server.py)
-For richer document ingestion support (PDF, DOCX, PPTX), install the optional backend dependencies:
+
+### 2. Build and start the app
+
+The Python server serves the production frontend from `frontend/dist`:
 
 ```bash
-pip install -r requirements.txt
+npm run build
+python -m backend.server
 ```
-The server defaults to `http://127.0.0.1:8000`. If that port is already taken, it automatically tries the next ports and prints the URL it selected.
+
+Open the URL printed by the server. It starts at `http://127.0.0.1:8000`; if that port is occupied, it tries the next 19 ports in order. You can also set `VISUAL_MAS_HOST` and `VISUAL_MAS_PORT` explicitly.
 
 Or run the demo helper:
 
@@ -76,25 +89,28 @@ Or run the demo helper:
 Run the backend:
 
 ```bash
-python3 backend/server.py
+python -m backend.server
 ```
 
 Run the React dev server in another terminal:
 
 ```bash
-VISUAL_MAS_API_TARGET=http://127.0.0.1:8001 npm run dev
+VISUAL_MAS_API_TARGET=http://127.0.0.1:8000 npm run dev
 ```
 
-Use the backend URL printed by `backend/server.py` as `VISUAL_MAS_API_TARGET` if it is not `8000`.
+The Vite app runs at `http://127.0.0.1:5173` and proxies `/api` to `VISUAL_MAS_API_TARGET`. If the backend selected a port other than `8000`, restart Vite with the printed backend URL.
 
 ## Useful Checks
 
 ```bash
-npm run build
-PYTHONPYCACHEPREFIX=/private/tmp/visual-mas-pycache python3 -m py_compile backend/app_database.py backend/rag.py backend/server.py backend/workflow.py
-curl -s http://127.0.0.1:8001/api/examples
-curl -s http://127.0.0.1:8001/api/documents/collections
+npm run check
+python -m pytest -q
+curl -s http://127.0.0.1:8000/api/health
+curl -s http://127.0.0.1:8000/api/examples
+curl -s http://127.0.0.1:8000/api/documents/collections
 ```
+
+The test suite requires `pytest` (`python -m pip install pytest`) in addition to the runtime dependencies.
 
 ## Optional Ollama Support
 
@@ -144,7 +160,7 @@ Open Neo4j Browser at `http://127.0.0.1:7474` and log in with `neo4j` / `visualm
 
 ## Optional PrimeKG Dataset Setup
 
-PrimeKG is not downloaded or imported during normal app startup. If you want to prepare the real dataset for future filtered biomedical subgraph work, manually place the official `kg.csv` at:
+PrimeKG is not downloaded or imported during normal app startup. To use either the full-graph import or the legacy filtered-subgraph workflow, manually place the official `kg.csv` at:
 
 ```text
 data/primekg/kg.csv
@@ -170,7 +186,7 @@ python -m backend.scripts.import_full_primekg --batch-size 10000
 python -m backend.scripts.import_full_primekg --status        # print progress/summary JSON
 ```
 
-- **Environment variables:** `NEO4J_URI`, `NEO4J_USER`, `NEO4J_PASSWORD`, `NEO4J_DATABASE` (connection); `PRIMEKG_IMPORT_BATCH_SIZE` (default `5000`); `PRIMEKG_IMPORT_PROGRESS_EVERY` (default `20` batches).
+- **Environment variables:** `NEO4J_URI`, `NEO4J_USER`, `NEO4J_PASSWORD`, `NEO4J_DATABASE` (connection); `PRIMEKG_IMPORT_BATCH_SIZE` (default `500`); `PRIMEKG_IMPORT_PROGRESS_EVERY` (default `20` batches).
 - **Monitor progress:** watch the console, run `--status`, or read `data/primekg/full_import_status.json` (tracks source file + fingerprint, started/completed times, rows/nodes/relationships processed, created-vs-matched, skipped rows, current batch, constraints created, errors). Graph-RAG is only considered "complete" once `status == "completed"` (surfaced as `datasetComplete` in `/api/primekg/status`).
 - **Restart safely after a failure:** `python -m backend.scripts.import_full_primekg --resume` (skips rows already recorded in the status file; `MERGE` makes re-processing harmless anyway).
 - **Migrate an old partial disease-slice database:** replace only the PrimeKG data, leaving unrelated Neo4j data intact:
@@ -193,7 +209,7 @@ fails safely instead of manufacturing answers:
 - **Relation semantics registry** ([backend/kg_semantics.py](backend/kg_semantics.py)) — every PrimeKG relation has a category, polarity, and which claim types it supports. `contraindication` can never be presented as `indication`; ontology `parent-child` edges never become therapeutic claims. All relations in the imported graph are mapped.
 - **Intent classification** — questions are classified (treatment / contraindication / association / drug-target / phenotype / …) before retrieval; prevalence and causal questions are marked **unsupported** because PrimeKG has no relation for them.
 - **Structured entity resolution** ([backend/kg_entity_resolution.py](backend/kg_entity_resolution.py)) — tiered exact → alias → token-boundary → controlled-fuzzy matching replaces substring matching, so `the` no longer matches `thecoma`; ambiguous mentions are reported, not guessed.
-- **Alias layer** ([backend/kg_aliases.py](backend/kg_aliases.py) + [data/primekg/kg_aliases.json](data/primekg/kg_aliases.json)) — extensible, versioned, provenance-tracked (CGRP→CALCA, HER2→ERBB2, PD-1→PDCD1, …). Coverage is not claimed complete; unresolved abbreviations are reported.
+- **Alias layer** ([backend/kg_aliases.py](backend/kg_aliases.py)) — supports an optional, versioned, provenance-tracked local alias catalog at `data/primekg/kg_aliases.json`. Coverage is not claimed complete; missing or unresolved abbreviations are reported rather than guessed.
 - **Component-based ranking + evidence gate** ([backend/kg_evidence.py](backend/kg_evidence.py)) — explicit score components, semantic dedup, per-anchor/relation/target caps, ontology/generic/hub penalties, and a structured status (`supported` / `partially_supported` / `insufficient_evidence` / `ambiguous_entity` / `unsupported_intent` / `conflicting_evidence`) that the answer prompt must obey.
 
 Run the full-graph evaluation harness (fixed corpus + random disease sampling, invariant checks, saved report):
